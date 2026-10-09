@@ -10,8 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31",
     "tenacity>=8.2",
-    "pydantic-settings>=2.2",
+    "pydantic>=2.6",
     "pyyaml>=6.0",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
@@ -24,3 +25,16 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Exploration notebooks are scratch work, not production code.
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use plain assert by design.
+"tests/**" = ["S101"]

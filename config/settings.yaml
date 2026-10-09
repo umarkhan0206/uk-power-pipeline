@@ -1,0 +1,55 @@
+# Project settings. Values here are design choices, explained in docs/data_sources.md.
+
+timezone: Europe/London
+
+# Forecasts for UK day D are made at this local time on day D-1.
+decision_time_local: "10:00"
+
+# Local folder for raw data (gitignored).
+data_dir: data
+
+# First settlement date for the historical backfill.
+# ECMWF archived runs start on 2024-03-14, so this is safely inside the archive.
+backfill_start_date: "2024-10-01"
+
+http:
+  timeout_seconds: 30
+  max_retries: 5
+  backoff_base_seconds: 1
+  backoff_max_seconds: 60
+  # Our own politeness limit, not a documented API limit.
+  requests_per_second: 2
+
+elexon:
+  base_url: https://data.elexon.co.uk/bmrs/api/v1
+  # System prices are reissued about 24.7 hours later, so incremental runs
+  # re-fetch this many recent days. 3 gives a margin over the 2 strictly needed.
+  refetch_days: 3
+
+open_meteo:
+  base_url: https://single-runs-api.open-meteo.com/v1/forecast
+  model: ecmwf_ifs
+  # 00 UTC run on D-1 is available by about 06 UTC, before the 09 UTC decision (BST).
+  run_hour_utc: 0
+  hourly_variables:
+    - temperature_2m
+    - shortwave_radiation
+    - wind_speed_100m
+    - cloud_cover
+  # Approximate coordinates. A simplification: not weighted by installed capacity.
+  locations:
+    - {name: wind_off_hornsea,   group: offshore_wind, lat: 53.9,  lon: 1.8}
+    - {name: wind_off_dogger,    group: offshore_wind, lat: 54.8,  lon: 1.9}
+    - {name: wind_off_eastanglia, group: offshore_wind, lat: 52.2, lon: 2.5}
+    - {name: wind_off_seagreen,  group: offshore_wind, lat: 56.6,  lon: -1.8}
+    - {name: wind_off_moray,     group: offshore_wind, lat: 58.2,  lon: -2.7}
+    - {name: wind_on_scotland,   group: onshore_wind,  lat: 55.7,  lon: -4.3}
+    - {name: solar_cambs,        group: solar,         lat: 52.3,  lon: 0.1}
+    - {name: solar_kent,         group: solar,         lat: 51.2,  lon: 0.8}
+    - {name: solar_somerset,     group: solar,         lat: 51.1,  lon: -2.9}
+    - {name: temp_london,        group: demand,        lat: 51.5,  lon: -0.13}
+    - {name: temp_birmingham,    group: demand,        lat: 52.48, lon: -1.9}
+    - {name: temp_manchester,    group: demand,        lat: 53.48, lon: -2.24}
+
+carbon_intensity:
+  base_url: https://api.carbonintensity.org.uk

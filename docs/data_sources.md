@@ -67,12 +67,29 @@ Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 
 ### Day ahead demand forecast (NDF, TSDF)
 
-* Endpoint: `/forecast/demand/day-ahead/earliest?from=&to=`
-* `from` and `to` are UTC start times and **both ends are inclusive**
-  (one day request returned 49 rows). Deduplicate on `startTime`
-* Seen issued once a day at 07:45 UTC, covering about 20 to 44 hours ahead
-* Every value for day D in the "earliest" view was published before 09:00 UTC on D-1
-* To do: check `/evolution` for issues later in the day that "earliest" would hide
+* Endpoints: `/forecast/demand/day-ahead/history?publishTime=&boundary=N` (used),
+  `/evolution` and `/earliest` (used only during exploration)
+* Two kinds of issue exist:
+  * a **long issue**, seen once a day at 07:45 UTC, reaching about two days ahead
+  * **short updates** about every 30 minutes, reaching only to about 03:30 UTC on the next day
+* For one half hour (18:00 UTC on 5 Oct 2026), `/evolution` listed **61 issues**.
+  The `/earliest` view showed only the first of them
+* Publish times wander by a minute or two, and issues are sometimes missed
+  (no issue at about 07:47 on 5 Oct)
+* `/history` returns the latest issue at or before `publishTime`. As of 09:00 UTC on 4 Oct
+  it returned a short update from 08:46 covering only the first 10 periods of 5 Oct
+* **Neither obvious approach is right:**
+  * "earliest" uses an issue from two days before for the first periods of the day
+  * a single "as of decision time" request misses most of the target day
+* **Approach used:** request the forecast as of the decision time, then step back to one second
+  before that issue's publish time, repeating until every period of the target day is covered
+  (limit 12 steps). Each period then gets the most recent forecast published before the decision.
+  For 5 Oct 2026 this took 3 requests: periods 1 to 10 from the 08:46 update,
+  periods 11 to 48 from the 07:45 long issue
+* Every response is checked: one issue per response, published no later than the time asked for
+  (otherwise it is rejected as leakage), boundary `N`, no duplicate start times
+* Every response fetched is landed, including ones that add no new periods.
+  Choosing the forecast for each period is repeated in Silver from the landed files
 * Use: model feature
 
 ### Wind forecast (WINDFOR)

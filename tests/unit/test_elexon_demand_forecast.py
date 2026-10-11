@@ -14,7 +14,7 @@ from responses import matchers
 from ukpower.config import HttpSettings
 from ukpower.ingestion.http_client import HttpClient
 from ukpower.ingestion.sources.base import ResponseValidationError, SourceRequest
-from ukpower.ingestion.sources.elexon_demand_forecast import ElexonDemandForecast
+from ukpower.ingestion.sources.elexon_forecasts import ElexonDemandForecast
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 BASE_URL = "https://data.elexon.co.uk/bmrs/api/v1"

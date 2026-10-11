@@ -8,7 +8,7 @@ a model input; only actual values are used. See docs/data_sources.md.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 

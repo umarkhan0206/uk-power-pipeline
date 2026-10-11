@@ -115,3 +115,25 @@ class ElexonWindSolarActual(ElexonDailySource):
             "settlementPeriodFrom": 1,
             "settlementPeriodTo": 50,
         }
+
+
+class ElexonWindSolarDayAhead(ElexonDailySource):
+    """Day ahead wind and solar forecast (DGWS / B1440). One row per period per type.
+
+    Published about 16:45 UTC on the day before, after the 10:00 decision time,
+    so it is collected for comparison and an evening decision experiment,
+    never used as an input to the 10:00 forecast.
+    """
+
+    name = "elexon_wind_solar_day_ahead"
+    path = "/forecast/generation/wind-and-solar/day-ahead"
+    key_fields = ("psrType",)
+
+    def params_for_day(self, day: date) -> dict[str, str | int | float]:
+        return {
+            "from": day.isoformat(),
+            "to": day.isoformat(),
+            "settlementPeriodFrom": 1,
+            "settlementPeriodTo": 50,
+            "processType": "day ahead",
+        }

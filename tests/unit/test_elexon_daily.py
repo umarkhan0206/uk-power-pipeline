@@ -1,4 +1,4 @@
-"""Tests for the shared daily Elexon adapter and its three datasets, using real fixtures."""
+"""Tests for the shared daily Elexon adapter and its datasets, using real fixtures."""
 
 import copy
 import json
@@ -15,6 +15,7 @@ from ukpower.ingestion.sources.elexon_daily import (
     ElexonDemandOutturn,
     ElexonGenerationByFuel,
     ElexonWindSolarActual,
+    ElexonWindSolarDayAhead,
 )
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -27,6 +28,7 @@ CASES = [
     (ElexonDemandOutturn, 50),
     (ElexonGenerationByFuel, 1000),
     (ElexonWindSolarActual, 150),
+    (ElexonWindSolarDayAhead, 150),
 ]
 
 
@@ -76,6 +78,12 @@ def test_wind_solar_requests_cover_all_possible_periods() -> None:
     assert request.url == f"{BASE_URL}/generation/actual/per-type/wind-and-solar"
     assert request.params["settlementPeriodFrom"] == 1
     assert request.params["settlementPeriodTo"] == 50
+
+
+def test_day_ahead_requests_only_the_day_ahead_process() -> None:
+    request = make(ElexonWindSolarDayAhead).requests_for_day(CLOCK_CHANGE_DAY)[0]
+    assert request.url == f"{BASE_URL}/forecast/generation/wind-and-solar/day-ahead"
+    assert request.params["processType"] == "day ahead"
 
 
 def test_partition_is_the_settlement_date() -> None:

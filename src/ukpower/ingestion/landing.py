@@ -114,3 +114,18 @@ class LandingZone:
         if not base.exists():
             return []
         return sorted(p for p in base.rglob("*.json") if not p.name.endswith(META_SUFFIX))
+
+    def landed_partitions(self, source: str) -> set[str]:
+        """Partitions (folder names) holding at least one data file for this source."""
+        _check_name("source", source)
+        base = self.root / source
+        if not base.exists():
+            return set()
+        return {
+            folder.name
+            for folder in base.iterdir()
+            if folder.is_dir()
+            and any(
+                f.suffix == ".json" and not f.name.endswith(META_SUFFIX) for f in folder.iterdir()
+            )
+        }

@@ -13,7 +13,12 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ukpower.config import OpenMeteoSettings
-from ukpower.ingestion.sources.base import ResponseValidationError, Source, SourceRequest
+from ukpower.ingestion.sources.base import (
+    ResponseValidationError,
+    Source,
+    SourceRequest,
+    latest_forecast_day,
+)
 from ukpower.timeutils import decision_time_utc, settlement_day_bounds_utc
 
 #: Open-Meteo says global runs take about 4 to 6 hours to process. We assume the upper end.
@@ -27,6 +32,12 @@ class OpenMeteoForecast(Source):
     """One request per target day covering every configured location. Partition = target date."""
 
     name = "open_meteo_ecmwf"
+
+    #: An archived model run never changes, so there is nothing to refetch.
+    refetch_recent = False
+
+    def latest_available_day(self, now: datetime, tz: ZoneInfo) -> date:
+        return latest_forecast_day(now, self._decision_local, self._tz)
 
     def __init__(self, settings: OpenMeteoSettings, tz: ZoneInfo, decision_local: time) -> None:
         self._settings = settings

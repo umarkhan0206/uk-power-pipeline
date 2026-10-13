@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date
-from typing import TYPE_CHECKING, Any
+from datetime import date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any, ClassVar
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from ukpower.ingestion.http_client import FetchResult, HttpClient
@@ -38,6 +39,12 @@ class Source(ABC):
 
     #: Folder name in the landing zone, for example "elexon_system_prices".
     name: str
+    #: Whether recent days are fetched again on every run, to catch republished data.
+    refetch_recent: ClassVar[bool] = True
+
+    def latest_available_day(self, now: datetime, tz: ZoneInfo) -> date:
+        """Latest target day whose data can exist at `now`. Default: yesterday, local time."""
+        return now.astimezone(tz).date() - timedelta(days=1)
 
     @abstractmethod
     def requests_for_day(self, day: date) -> list[SourceRequest]:
@@ -76,3 +83,13 @@ def require_data_list(payload: Any) -> list[dict[str, Any]]:  # noqa: ANN401
     if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
         raise ResponseValidationError("'data' is not a list of records")
     return data
+
+
+def latest_forecast_day(now: datetime, decision_local: time, tz: ZoneInfo) -> date:
+    """Tomorrow if today's decision time has passed, otherwise today (local dates)."""
+    from ukpower.timeutils import decision_time_utc  # local import avoids a cycle
+
+    tomorrow = now.astimezone(tz).date() + timedelta(days=1)
+    if now >= decision_time_utc(tomorrow, decision_local, tz):
+        return tomorrow
+    return tomorrow - timedelta(days=1)

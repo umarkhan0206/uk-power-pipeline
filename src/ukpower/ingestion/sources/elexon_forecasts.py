@@ -19,6 +19,7 @@ from ukpower.ingestion.sources.base import (
     ResponseValidationError,
     Source,
     SourceRequest,
+    latest_forecast_day,
     require_data_list,
 )
 from ukpower.timeutils import decision_time_utc, settlement_day_bounds_utc
@@ -49,6 +50,12 @@ class ElexonAsOfForecast(Source):
     max_steps = 12
     #: How far before an issue's publish time to ask for the previous issue.
     step_back = timedelta(seconds=1)
+
+    #: Forecasts as of a past decision time never change, so there is nothing to refetch.
+    refetch_recent = False
+
+    def latest_available_day(self, now: datetime, tz: ZoneInfo) -> date:
+        return latest_forecast_day(now, self._decision_local, self._tz)
 
     def __init__(self, base_url: str, tz: ZoneInfo, decision_local: time) -> None:
         self._base_url = base_url

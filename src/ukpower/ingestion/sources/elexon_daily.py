@@ -104,7 +104,10 @@ class ElexonWindSolarActual(ElexonDailySource):
 
     name = "elexon_wind_solar_actual"
     path = "/generation/actual/per-type/wind-and-solar"
-    key_fields = ("psrType",)
+    # A period can be republished later with corrected values, so the same
+    # (period, type) appears once per publishTime. Only a repeat with the same
+    # publishTime is a true duplicate. Silver keeps the latest version.
+    key_fields = ("psrType", "publishTime")
 
     def params_for_day(self, day: date) -> dict[str, str | int | float]:
         # Period parameters make from/to act as settlement dates (seen in the API probe).
@@ -127,7 +130,7 @@ class ElexonWindSolarDayAhead(ElexonDailySource):
 
     name = "elexon_wind_solar_day_ahead"
     path = "/forecast/generation/wind-and-solar/day-ahead"
-    key_fields = ("psrType",)
+    key_fields = ("psrType", "publishTime")
 
     def params_for_day(self, day: date) -> dict[str, str | int | float]:
         return {

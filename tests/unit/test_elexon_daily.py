@@ -140,3 +140,20 @@ def test_same_period_different_fuel_is_not_a_duplicate() -> None:
     assert len({r["fuelType"] for r in period_one}) > 1
     request = source.requests_for_day(CLOCK_CHANGE_DAY)[0]
     assert source.validate(request, {"data": period_one}) == len(period_one)
+
+
+@pytest.mark.parametrize("source_cls", [ElexonWindSolarActual, ElexonWindSolarDayAhead])
+def test_republished_period_with_new_publish_time_is_accepted(
+    source_cls: type[ElexonDailySource],
+) -> None:
+    # Real case: 2025-09-16 period 18 was published at 09:58 and again at 14:10,
+    # with Solar corrected from 3264 to 3267. Both versions must land.
+    source = make(source_cls)
+    payload = load_fixture(source)
+    revision = copy.deepcopy(payload["data"][0])
+    revision["publishTime"] = "2099-01-01T00:00:00Z"
+    revision["quantity"] = revision["quantity"] + 3
+    payload["data"].append(revision)
+    request = source.requests_for_day(CLOCK_CHANGE_DAY)[0]
+
+    assert source.validate(request, payload) == 151

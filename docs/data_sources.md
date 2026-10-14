@@ -145,3 +145,47 @@ Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 * Store every raw response unchanged, with fetch time
 * Work in UTC internally; keep settlement date and period as labels
 * Check the HTTP status before reading the body, and log the API's error message on failure
+
+## Backfill results and known gaps
+
+The full backfill covered 2024-10-01 to 2026-10-13 and took three runs.
+
+| Run | Time | Landed | Failed | What happened |
+|---|---|---|---|---|
+| 1 | 7,781 s | 6,523 | 139 | Full backfill |
+| 2 | 103 s | 72 | 67 | Open-Meteo rate limited days retried |
+| 3 | 34 s | 61 | 6 | After the revision fix below |
+
+Final day counts on disk: 743 for each actuals source, 744 for the demand and
+wind forecasts (they include tomorrow), 741 for day ahead wind and solar, 740
+for Open-Meteo.
+
+### Open-Meteo rate limiting (resolved)
+
+In run 1, 72 consecutive days (2026-06-27 to 2026-09-06) failed with HTTP 429.
+Our retries wait at most about a minute, which is not enough for an hourly
+quota. All 72 landed on a rerun. A slower request rate for Open-Meteo would
+avoid this in future backfills.
+
+### Wind and solar revisions (resolved)
+
+57 days of wind and solar actuals and 4 days of day ahead wind and solar failed
+the duplicate check. Elexon had republished some periods later with a new
+publishTime. Example: on 2025-09-16, period 18 was published at 09:58 UTC and
+again at 14:10 UTC; wind was unchanged and solar went from 3264 to 3267 MW.
+These are revisions, not errors, so the duplicate key for both sources is now
+(period, psrType, publishTime). Both versions are kept in the landing zone;
+Silver keeps the latest one.
+
+### Known permanent gaps
+
+**Open-Meteo, 4 days** (2025-08-06, 2025-08-07, 2025-08-09, 2025-08-10).
+The API says the ECMWF IFS 00:00 runs for 2025-08-05, 06, 08 and 09 are not
+available. Retrying does not help. Models must handle missing weather days.
+
+**Day ahead wind and solar, 2 days** (2026-04-26, 2026-04-27). Elexon returned
+every record twice with the same publishTime (2026-04-25T16:45:04Z) but
+different values. For example, on 2026-04-26 period 10, Wind Onshore was 438.4
+in one copy and 2148.0 in the other. Nothing in the data shows which copy is
+correct, so these days are rejected rather than guessed. This dataset is
+comparison only, never a model input, so the impact is small.

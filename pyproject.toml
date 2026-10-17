@@ -30,7 +30,7 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 # Exploration notebooks are scratch work, not production code.
-extend-exclude = ["notebooks"]
+extend-exclude = ["notebooks", "databricks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "S", "ANN"]

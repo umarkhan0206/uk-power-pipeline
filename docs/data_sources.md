@@ -96,7 +96,12 @@ Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 
 * Endpoints: `/forecast/generation/wind/history?publishTime=` and `/evolution?startTime=`
 * **Hourly**, not half hourly
-* Issued 8 times a day at 03:30, 05:30, 08:30, 10:30, 12:30, 16:30, 19:30, 23:30 UTC
+* Issued 8 times a day. Seen in October 2026 (UK summer time) at 03:30, 05:30, 08:30,
+  10:30, 12:30, 16:30, 19:30, 23:30 UTC
+* The issue used at the 10:00 decision follows the UK clock: across all 744 target days
+  it was published exactly 0.5 h before the decision, so 08:30 UTC in summer and
+  09:30 UTC in winter (09:30 UK time all year). The other issues probably follow the
+  UK clock too, but that has not been checked
 * Each issue covers about 3 days
 * `/history` returns the latest issue at or before the requested `publishTime`
   (asking for 09:00 returned the 08:30 issue), which makes the as of join simple

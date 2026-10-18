@@ -71,6 +71,9 @@ class OpenMeteoSettings(StrictModel):
     run_hour_utc: Literal[0, 6, 12, 18]
     hourly_variables: list[str] = Field(min_length=1)
     locations: list[Location] = Field(min_length=1)
+    #: Days of forecast to request from the run start. The target day ends at most
+    #: 48 h after the run starts, so 2 is the minimum; 3 leaves a margin.
+    forecast_days: int = Field(default=3, ge=2, le=16)
 
     @field_validator("locations")
     @classmethod

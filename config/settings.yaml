@@ -30,7 +30,8 @@ open_meteo:
   base_url: https://single-runs-api.open-meteo.com/v1/forecast
   model: ecmwf_ifs
   # 00 UTC run on D-1 is available by about 06 UTC, before the 09 UTC decision (BST).
-  run_hour_utc: 0
+  run_hour_utc: 0   
+  forecast_days: 3
   hourly_variables:
     - temperature_2m
     - shortwave_radiation

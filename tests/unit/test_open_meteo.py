@@ -167,3 +167,9 @@ def test_single_blank_target_hour_is_rejected() -> None:
     hourly["wind_speed_100m"][hourly["time"].index(target)] = None
     with pytest.raises(ResponseValidationError, match="1 missing values for wind_speed_100m"):
         source.validate(request, payload)
+
+
+def test_request_asks_only_for_the_configured_forecast_days() -> None:
+    # Was 7 days (168 hours) by default; only about 24 hours are used.
+    source, request, _ = _om_source_and_payload()
+    assert request.params["forecast_days"] == "3"

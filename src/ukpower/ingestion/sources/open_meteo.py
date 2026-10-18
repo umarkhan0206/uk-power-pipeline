@@ -71,6 +71,7 @@ class OpenMeteoForecast(Source):
                     "models": self._settings.model,
                     "hourly": ",".join(self._settings.hourly_variables),
                     "timezone": "GMT",
+                    "forecast_days": str(self._settings.forecast_days),
                 },
             )
         ]

@@ -3,17 +3,22 @@
 For target day D we use the run that started at run_hour_utc on D-1. Open-Meteo
 reports when a run started, not when it became available, so availability is an
 explicit assumption (ASSUMED_RUN_AVAILABILITY) that is checked against the
-decision time. See docs/data_sources.md.
+decision time. If that run is missing or incomplete, earlier runs are tried every
+6 hours, up to max_fallback_hours back. See docs/data_sources.md.
 """
 
 from __future__ import annotations
 
+import logging
+import math
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from ukpower.config import OpenMeteoSettings
+from ukpower.ingestion.http_client import HttpClient, HttpError
 from ukpower.ingestion.sources.base import (
+    FetchedResponse,
     ResponseValidationError,
     Source,
     SourceRequest,
@@ -26,6 +31,10 @@ ASSUMED_RUN_AVAILABILITY = timedelta(hours=6)
 #: Largest allowed distance between a requested point and the grid point returned.
 MAX_SNAP_DEGREES = 0.25
 RUN_FORMAT = "%Y-%m-%dT%H:%M"
+#: ECMWF IFS runs start every 6 hours.
+RUN_INTERVAL = timedelta(hours=6)
+
+logger = logging.getLogger(__name__)
 
 
 class OpenMeteoForecast(Source):
@@ -36,16 +45,16 @@ class OpenMeteoForecast(Source):
     #: An archived model run never changes, so there is nothing to refetch.
     refetch_recent = False
 
-    def latest_available_day(self, now: datetime, tz: ZoneInfo) -> date:
-        return latest_forecast_day(now, self._decision_local, self._tz)
-
     def __init__(self, settings: OpenMeteoSettings, tz: ZoneInfo, decision_local: time) -> None:
         self._settings = settings
         self._tz = tz
         self._decision_local = decision_local
 
+    def latest_available_day(self, now: datetime, tz: ZoneInfo) -> date:
+        return latest_forecast_day(now, self._decision_local, self._tz)
+
     def run_for_day(self, day: date) -> datetime:
-        """The forecast run used for a target day, checked against the decision time.
+        """The normal forecast run for a target day, checked against the decision time.
 
         Raises:
             ValueError: if the run would not be available by the decision time.
@@ -58,23 +67,66 @@ class OpenMeteoForecast(Source):
             raise ValueError(f"run {run} is not assumed available by the decision time {decision}")
         return run
 
-    def requests_for_day(self, day: date) -> list[SourceRequest]:
+    def candidate_runs(self, day: date) -> list[datetime]:
+        """The normal run first, then earlier runs every 6 h, up to max_fallback_hours back."""
+        first = self.run_for_day(day)
+        steps = self._settings.max_fallback_hours // int(RUN_INTERVAL.total_seconds() // 3600)
+        return [first - RUN_INTERVAL * i for i in range(steps + 1)]
+
+    def request_for_run(self, day: date, run: datetime) -> SourceRequest:
+        """The request for one run. Older runs ask for extra days so they still reach the target."""
+        extra_days = math.ceil((self.run_for_day(day) - run) / timedelta(days=1))
         locations = self._settings.locations
-        return [
-            SourceRequest(
-                partition=day.isoformat(),
-                url=self._settings.base_url,
-                params={
-                    "latitude": ",".join(str(loc.lat) for loc in locations),
-                    "longitude": ",".join(str(loc.lon) for loc in locations),
-                    "run": self.run_for_day(day).strftime(RUN_FORMAT),
-                    "models": self._settings.model,
-                    "hourly": ",".join(self._settings.hourly_variables),
-                    "timezone": "GMT",
-                    "forecast_days": str(self._settings.forecast_days),
-                },
-            )
-        ]
+        return SourceRequest(
+            partition=day.isoformat(),
+            url=self._settings.base_url,
+            params={
+                "latitude": ",".join(str(loc.lat) for loc in locations),
+                "longitude": ",".join(str(loc.lon) for loc in locations),
+                "run": run.strftime(RUN_FORMAT),
+                "models": self._settings.model,
+                "hourly": ",".join(self._settings.hourly_variables),
+                "forecast_days": str(self._settings.forecast_days + extra_days),
+                "timezone": "GMT",
+            },
+        )
+
+    def requests_for_day(self, day: date) -> list[SourceRequest]:
+        return [self.request_for_run(day, self.run_for_day(day))]
+
+    def fetch_day(self, client: HttpClient, day: date) -> list[FetchedResponse]:
+        """Use the newest complete run. Fall back only if a run is missing or incomplete.
+
+        Raises:
+            ResponseValidationError: if no complete run exists within max_fallback_hours.
+        """
+        tried: list[str] = []
+        for run in self.candidate_runs(day):
+            request = self.request_for_run(day, run)
+            try:
+                result = client.get(request.url, request.params)
+                count = self.validate(request, result.json())
+            except HttpError as exc:
+                if exc.status_code != 400 or "not available" not in exc.body:
+                    raise  # rate limits and server errors are not a reason to use older data
+                tried.append(f"{run.strftime(RUN_FORMAT)} not available")
+                continue
+            except ResponseValidationError as exc:
+                tried.append(f"{run.strftime(RUN_FORMAT)} incomplete ({exc})")
+                continue
+            if tried:
+                logger.warning(
+                    "%s %s: used fallback run %s after: %s",
+                    self.name,
+                    day,
+                    run.strftime(RUN_FORMAT),
+                    "; ".join(tried),
+                )
+            return [FetchedResponse(request=request, result=result, record_count=count)]
+        raise ResponseValidationError(
+            f"{self.name}: no complete run within {self._settings.max_fallback_hours} h "
+            f"for {day}: {'; '.join(tried)}"
+        )
 
     def target_hours(self, day: date) -> set[str]:
         """Every hour of the local settlement day, as Open-Meteo GMT time strings."""

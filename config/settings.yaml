@@ -32,6 +32,7 @@ open_meteo:
   # 00 UTC run on D-1 is available by about 06 UTC, before the 09 UTC decision (BST).
   run_hour_utc: 0   
   forecast_days: 3
+  max_fallback_hours: 48
   hourly_variables:
     - temperature_2m
     - shortwave_radiation

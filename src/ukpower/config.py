@@ -74,6 +74,9 @@ class OpenMeteoSettings(StrictModel):
     #: Days of forecast to request from the run start. The target day ends at most
     #: 48 h after the run starts, so 2 is the minimum; 3 leaves a margin.
     forecast_days: int = Field(default=3, ge=2, le=16)
+    #: When a run is missing or incomplete, try earlier runs (every 6 h) up to this far back.
+    #: 0 turns the fallback off.
+    max_fallback_hours: int = Field(default=48, ge=0, le=72)
 
     @field_validator("locations")
     @classmethod

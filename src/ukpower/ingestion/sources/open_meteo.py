@@ -121,11 +121,23 @@ class OpenMeteoForecast(Source):
                 )
             if any(len(hourly[v]) != len(times) for v in variables):
                 raise ResponseValidationError(f"{self.name}: {loc.name} has unequal series lengths")
+
+            # 1. Every hour of the target day must be present...
             if not needed <= set(times):
                 raise ResponseValidationError(
                     f"{self.name}: {loc.name} does not cover {request.partition}, "
                     f"{len(needed - set(times))} hours missing"
                 )
+
+            # 2. ...and every value in those hours must be filled in.
+            index = {t: i for i, t in enumerate(times)}
+            for v in variables:
+                blanks = sum(1 for t in needed if hourly[v][index[t]] is None)
+                if blanks:
+                    raise ResponseValidationError(
+                        f"{self.name}: {loc.name} has {blanks} missing values for {v} "
+                        f"on {request.partition}"
+                    )
             total += len(times)
 
         return total

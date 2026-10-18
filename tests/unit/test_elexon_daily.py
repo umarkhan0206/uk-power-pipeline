@@ -157,3 +157,12 @@ def test_republished_period_with_new_publish_time_is_accepted(
     request = source.requests_for_day(CLOCK_CHANGE_DAY)[0]
 
     assert source.validate(request, payload) == 151
+
+
+@pytest.mark.parametrize(("source_cls", "_expected"), CASES)
+def test_empty_response_is_rejected(source_cls: type[ElexonDailySource], _expected: int) -> None:
+    # Real case: 2025-02-09 day ahead came back as {"data": []} and was landed as a success
+    source = make(source_cls)
+    request = source.requests_for_day(CLOCK_CHANGE_DAY)[0]
+    with pytest.raises(ResponseValidationError, match="no records"):
+        source.validate(request, {"data": []})

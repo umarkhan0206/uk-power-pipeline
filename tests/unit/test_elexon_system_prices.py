@@ -121,3 +121,10 @@ def test_source_without_methods_cannot_be_created() -> None:
 
     with pytest.raises(TypeError):
         Incomplete()  # type: ignore[abstract]
+
+
+def test_empty_response_is_rejected(source: ElexonSystemPrices) -> None:
+    # An empty reply must fail so the day is retried, instead of being landed as a success
+    req = request_for(source, date(2026, 10, 6))
+    with pytest.raises(ResponseValidationError, match="no records"):
+        source.validate(req, {"data": []})

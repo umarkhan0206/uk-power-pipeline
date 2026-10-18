@@ -48,6 +48,8 @@ class ElexonDailySource(Source):
 
     def validate(self, request: SourceRequest, payload: Any) -> int:  # noqa: ANN401
         records = require_data_list(payload)
+        if not records:
+            raise ResponseValidationError(f"{self.name}: no records for {request.partition}")
         day = date.fromisoformat(request.partition)
         max_periods = settlement_periods_in_day(day, self._tz)
 

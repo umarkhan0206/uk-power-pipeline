@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from ukpower.config import OpenMeteoSettings, load_settings
-from ukpower.ingestion.sources.base import ResponseValidationError
+from ukpower.ingestion.sources.base import ResponseValidationError, SourceRequest
 from ukpower.ingestion.sources.open_meteo import OpenMeteoForecast
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -141,3 +141,29 @@ def test_single_location_response_object_is_accepted(
     one = settings.model_copy(update={"locations": settings.locations[:1]})
     source = OpenMeteoForecast(one, load_settings().tz, time(10, 0))
     assert source.validate(request_for(source), payload[0]) == len(payload[0]["hourly"]["time"])
+
+
+def _om_source_and_payload() -> tuple[OpenMeteoForecast, SourceRequest, list]:
+    settings = load_settings()
+    source = OpenMeteoForecast(settings.open_meteo, settings.tz, settings.decision_time_local)
+    request = source.requests_for_day(date(2025, 10, 26))[0]
+    path = Path(__file__).resolve().parents[1] / "fixtures" / "open_meteo_ecmwf_2025-10-26.json"
+    return source, request, json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_hollow_run_is_rejected() -> None:
+    # Real case: target day 2025-08-08 had the right shape but every value was null
+    source, request, payload = _om_source_and_payload()
+    hourly = payload[0]["hourly"]
+    hourly["temperature_2m"] = [None] * len(hourly["time"])
+    with pytest.raises(ResponseValidationError, match="missing values for temperature_2m"):
+        source.validate(request, payload)
+
+
+def test_single_blank_target_hour_is_rejected() -> None:
+    source, request, payload = _om_source_and_payload()
+    hourly = payload[3]["hourly"]
+    target = sorted(source.target_hours(date(2025, 10, 26)))[10]
+    hourly["wind_speed_100m"][hourly["time"].index(target)] = None
+    with pytest.raises(ResponseValidationError, match="1 missing values for wind_speed_100m"):
+        source.validate(request, payload)

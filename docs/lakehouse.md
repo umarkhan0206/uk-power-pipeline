@@ -53,6 +53,28 @@ published at or before the decision time (10:00 UK on the day before the target 
 | weather_forecast_asof | 213,696 | run plus 6 h before 10:00 on every row, 0 blank values |
 | wind_solar_day_ahead_asof | 105,984 | as known at 19:00, comparison only |
 
+## Gold: one row per half hour, as known at 10:00 the day before
+
+`workspace.gold.price_features`: 35,712 rows (744 target days), 41 columns.
+35,663 rows have a target price; 49 do not (all 48 of 2026-10-14, and 2026-10-13 period 48).
+
+* Target: the latest system price (the final settlement truth).
+* Forecasts: demand and wind as published by 10:00; weather from the run used for each
+  day, with its age (9 or 10 h normally, up to 51 h after a fallback).
+* Weather matching: snapshots (wind, cloud, temperature) use the hour nearest the middle
+  of the half hour; shortwave radiation uses the hour after the half hour's hour starts.
+  Checked: mean June radiation is 0 at night and peaks symmetrically around 13:00 UK.
+* Recent actuals: a value is used only if it was published before the decision.
+  Demand and wind: 2 days back (0 late rows measured). Prices: 3 and 7 days back,
+  because 20,937 prices are reissued up to a day late and 1,056 were republished in
+  bulk months later (5 dates). 1,074 and 1,056 values are blanked by this rule.
+  Daily price summaries need at least 43 of 48 prices in time, otherwise blank (3 days).
+* Checks on the finished table: no decision after its half hour, no forecast from after
+  the decision, no weather run fresher than the 6 h assumption.
+* Correlation with the target price (signs match the market; all are weak):
+  demand forecast +0.265, wind forecast -0.232, mean wind speed -0.224,
+  radiation -0.131, price 3 days back +0.158.
+
 ### System prices
 * Sell and buy prices are identical in all 35,663 half hours (single imbalance price).
 * Range -£97.92 to £2,900 per MWh. Median £91.50, mean £90.45.

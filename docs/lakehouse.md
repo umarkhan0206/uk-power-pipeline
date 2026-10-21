@@ -25,7 +25,7 @@ with the fingerprint in each file name: 0 mismatches, so every file arrived byte
 | elexon_demand_forecast | 93,109 | 2,233 files (several issues per day) |
 | elexon_wind_forecast | 53,928 | hourly |
 | carbon_intensity | 36,407 | one extra window per file |
-| open_meteo_ecmwf | 1,491,840 | 740 files x 12 locations x 168 hours |
+| open_meteo_ecmwf | 742 files | 12 locations; 72 to 168 hours per file; real run time from metadata |
 | landing_files | 8,173 | one row per data file, including empty ones |
 
 Every row keeps `_source_file`, `_partition_day`, `_fetched_at` and `_ingested_at`.
@@ -50,7 +50,7 @@ published at or before the decision time (10:00 UK on the day before the target 
 | carbon_intensity | 35,664 | 0 label mismatches with Elexon |
 | demand_forecast_asof | 35,712 | 0 rows published after 10:00 |
 | wind_forecast_asof | 17,856 | 0 rows published after 10:00 |
-| weather_forecast_asof | 213,120 | run plus 6 h before 10:00 on every row |
+| weather_forecast_asof | 213,696 | run plus 6 h before 10:00 on every row, 0 blank values |
 | wind_solar_day_ahead_asof | 105,984 | as known at 19:00, comparison only |
 
 ### System prices
@@ -90,9 +90,15 @@ actuals stay in Silver for solar and comparison. The model phase will test both.
   each leaving gaps across two target days.
 
 ### Weather
-* 2025-08-08 is hollow: right shape, every value null. With the 4 missing runs,
-  the August 2025 gap is 5 days.
-* 2026-06-24 has no temperature values.
+* When the normal 00:00 run is missing or has blank values, the downloader uses the
+  newest complete earlier run (every 6 h, up to 48 h back). It falls back only for
+  "run not available" or blank values, never for rate limits or server errors.
+* 4 of 6 bad target days were rescued: 2025-08-06, 2025-08-07, 2025-08-10 and 2026-06-24.
+  2025-08-08 and 2025-08-09 have no complete run within 48 h and stay as gaps.
+* The hollow files for 2025-08-08 and 2026-06-24 were moved to a quarantine folder,
+  on the laptop and in the Databricks volume, not deleted.
+* Bronze reads the real run time from each file's metadata (`params.run`). Silver records
+  `run_age_at_decision_hours`: 9 h on 430 days, 10 h on 308, 21 h on 1, 27 h on 2, 51 h on 1.
 * Shortwave radiation is the mean over the previous hour; Gold must align it.
 
 ### Carbon intensity
@@ -101,8 +107,8 @@ actuals stay in Silver for solar and comparison. The model phase will test both.
 * Mean 128.4 gCO2/kWh. A minimum of 0 and 43 null forecasts are flagged for Phase 5.
 
 ## Open items
-1. Phase 1: treat empty replies and all null values as failures.
-2. Phase 1: fall back to the previous weather run when one is missing.
-3. Phase 1: request fewer forecast days from Open-Meteo (1 of 7 is used).
-4. Docs: wind forecast issue times follow UK local time.
+1. Done: empty replies and blank values are failures.
+2. Done: weather falls back to the newest complete earlier run.
+3. Done: Open-Meteo requests 3 forecast days instead of 7.
+4. Done: wind forecast issue times documented as following UK time.
 5. Phase 5: checks for complete days, empty files, zero values.

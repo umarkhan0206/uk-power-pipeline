@@ -46,6 +46,13 @@ class Source(ABC):
         """Latest target day whose data can exist at `now`. Default: yesterday, local time."""
         return now.astimezone(tz).date() - timedelta(days=1)
 
+    def refetch_days(self, default: int, today: date) -> int:  # noqa: ARG002
+        """How many recent days an incremental run fetches again. Default: the shared setting.
+
+        Sources whose data keeps changing for longer override this.
+        """
+        return default
+
     @abstractmethod
     def requests_for_day(self, day: date) -> list[SourceRequest]:
         """The API calls needed to cover one UK settlement day (or the first one, if adaptive)."""

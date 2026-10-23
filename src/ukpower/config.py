@@ -46,12 +46,22 @@ class HttpSettings(StrictModel):
         return self
 
 
+class SettledPricesSettings(StrictModel):
+    """How far back the settled prices look for newer settlement runs."""
+
+    #: About 14 months, so the final run (RF) is caught. 0 turns the long look back off.
+    long_refetch_days: int = Field(default=430, ge=0, le=500)
+    #: Which day of the week does the long look back. Monday = 0, Sunday = 6.
+    long_refetch_weekday: int = Field(default=6, ge=0, le=6)
+
+
 class ElexonSettings(StrictModel):
     """Elexon Insights API settings."""
 
     base_url: str = Field(pattern=URL_PATTERN)
     # At least 2, because system prices are reissued about 24.7 hours later.
     refetch_days: int = Field(ge=2, le=14)
+    settled_prices: SettledPricesSettings = Field(default_factory=SettledPricesSettings)
 
 
 class Location(StrictModel):

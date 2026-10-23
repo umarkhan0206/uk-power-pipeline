@@ -6,7 +6,7 @@ from ukpower.ingestion.sources import build_sources
 
 
 def test_all_nine_sources_are_built() -> None:
-    assert len(build_sources(load_settings())) == 9
+    assert len(build_sources(load_settings())) == 10
 
 
 def test_source_names_are_unique() -> None:

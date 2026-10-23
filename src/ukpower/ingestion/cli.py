@@ -61,20 +61,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     sources = select_sources(build_sources(settings), args.sources)
     landing = LandingZone(settings.data_path / "landing")
     now = datetime.now(UTC)
+    today = now.astimezone(settings.tz).date()
     start = args.start or settings.backfill_start_date
-    refetch_days = settings.elexon.refetch_days if args.mode == "incremental" else 0
 
     plans: list[tuple[Source, list[date]]] = []
     for source in sources:
         latest = source.latest_available_day(now, settings.tz)
         if args.end:
             latest = min(latest, args.end)
+        refetch_days = (
+            source.refetch_days(settings.elexon.refetch_days, today)
+            if args.mode == "incremental"
+            else 0
+        )
         days = plan_days(
             source, landing.landed_partitions(source.name), start, latest, refetch_days
         )
         plans.append((source, days))
         first, last = (days[0], days[-1]) if days else (None, None)
-        logger.info("Plan %s: %d days (%s to %s)", source.name, len(days), first, last)
+        logger.info(
+            "Plan %s: %d days (%s to %s), refetch window %d",
+            source.name,
+            len(days),
+            first,
+            last,
+            refetch_days,
+        )
 
     if args.dry_run:
         logger.info("Dry run: nothing fetched")

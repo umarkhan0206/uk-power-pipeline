@@ -25,7 +25,11 @@ elexon:
   # System prices are reissued about 24.7 hours later, so incremental runs
   # re-fetch this many recent days. 3 gives a margin over the 2 strictly needed.
   refetch_days: 3
-
+  # Settlement runs keep arriving for about 14 months (RF). Elexon keeps each run
+  # available for months, so a weekly look back is enough to catch every one.
+  settled_prices:
+    long_refetch_days: 430
+    long_refetch_weekday: 6   # Monday = 0, Sunday = 6
 open_meteo:
   base_url: https://single-runs-api.open-meteo.com/v1/forecast
   model: ecmwf_ifs

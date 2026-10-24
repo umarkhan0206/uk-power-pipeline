@@ -19,7 +19,7 @@ The pipeline checks this rule in code rather than assuming it.
 
 Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 
-### System prices (target)
+### System prices (market feed: features)
 
 * Endpoint: `/balancing/settlement/system-prices/{settlementDate}`
 * Grain: one row per settlement period (48 on a normal day, 46 or 50 on clock change days)
@@ -37,6 +37,90 @@ Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 * Consequence: incremental runs re-fetch at least the last two days
 * Limitation: first versions are only captured from the day the pipeline starts.
   A historical backfill only sees later versions
+* Since Phase 3 this feed is used only for features (lagged and masked by publish time).
+  The target is the settled price below, because the feed differs from settlement in
+  about 4% of half hours and contains 30 false zeros
+
+### Settled prices (target)
+
+* Endpoint: `/market-reports/best-view-prices?startDate=D&endDate=D` (no `runType`)
+* Source name: `elexon_settled_prices`. One request per settlement date.
+
+The same half hourly imbalance price as `elexon_system_prices`, but taken from settlement.
+Elexon recalculates each day in a series of settlement runs over roughly 14 months:
+II (Interim Information), SF (Settlement Final), R1, R2, R3 and RF (Final Reconciliation),
+plus DF after a dispute. Before the first run exists, the report falls back to the market
+feed and labels the rows `BM`. With no `runType`, the report returns the latest run
+available for each half hour, labelled with its run.
+
+**Validation:** the same checks as system prices (right date, valid and unique periods,
+not empty), plus: every run label must be one of BM, II, SF, R1, R2, R3, RF, DF, and both
+prices must be numbers.
+
+**Refetch:** settlement runs keep arriving for about 14 months, so on Sundays this source
+looks back `long_refetch_days: 430` instead of the usual 3 days
+(`config/settings.yaml`, `elexon.settled_prices`). Elexon keeps each run available for
+months, so a weekly look back misses no run, only its exact arrival day. Every newer run
+lands as a new file, which builds the revision history by run.
+
+#### Why we added it: old versions of the feed are not kept
+
+`/balancing/settlement/system-prices/{date}` returns only the latest version of each half
+hour (for 2025-08-20, every row was created on 2025-12-12). `/datasets/DISEBSP` and
+`/datasets/DISEBSP/stream` return 404. So the original publications of republished prices
+cannot be recovered from the API.
+
+The settlement runs can. Asking `best-view-prices` for each `runType` on 11 sample days
+(October 2024 to October 2026) showed that Elexon keeps a moving window of runs: recent
+days still have II and SF, older days only have their later runs (R3 and RF, or RF only).
+Early runs were available from about April 2026 in that sample.
+
+#### Findings: how much do prices change after publication?
+
+**Run to run, 1 April to 20 October 2026** (`data/exploration/price_runs_2026.csv`):
+
+| Step | Half hours compared | Changed | Over £1 | Over £10 | Typical change when changed | Biggest |
+|---|---|---|---|---|---|---|
+| Feed → II | 9,648 | 434 (4.5%) | 128 | 75 | £0.03 | £164.99 |
+| II → SF | 8,832 | 177 (2.0%) | 16 | 11 | £0.02 | £122.00 |
+| SF → R1 | 7,632 | 46 (0.6%) | 1 | 0 | £0.02 | £1.24 |
+| R1 → R2 | 4,464 | 14 (0.3%) | 0 | 0 | £0.01 | £0.04 |
+
+Almost all movement happens before SF (about a month). Most changes are pennies, but a few
+are large. In this window, 83 half hours moved by more than £10 on 33 different days,
+73 of them upwards.
+
+**Feed vs settled price, 1 October 2024 to 20 October 2026**
+(`data/exploration/price_vs_settled.csv`, latest run per half hour):
+
+- 36,000 half hours compared; 1,527 differ (4.2%), so the feed matches the settled price
+  in 95.8% of half hours
+- 332 differ by more than £10: 241 up, 91 down. When the feed is off by a lot, it is
+  usually too low
+- Runs behind the settled prices: RF 16,272, R3 9,554, R2 4,894, R1 3,168, SF 1,200,
+  II 816, BM 96 (19 and 20 October, before any settlement run)
+- **Zeros:** the feed has 177 half hours at exactly £0.00. 147 are real (the settled price
+  is also zero, for example 25 December periods 47 and 48). 30 are not: the settled price
+  was up to £164.99. 12 of the 30 are on 3 to 5 October 2026; the rest are scattered back
+  to December 2024. 3 settled zeros are not zero in the feed
+- The same comparison inside the lakehouse (Silver, 35,663 half hours) gives 1,521
+  changed, 241 up and 91 down over £10, and the same 177 / 147 / 30 zeros
+
+#### Decision
+
+- **Features keep the feed price**, exactly as published and masked by publish time,
+  because that is what a trader sees at 10am. Correcting it with settlement data from
+  weeks later would leak the future into the inputs
+- **The target and the backtest use the settled price**, because that is what a battery
+  is paid on. Gold keeps the feed price as `feed_price`, so the effect of the switch can
+  be measured in Phase 7
+
+#### Limitations
+
+- Early runs (II, SF, R1) exist only for roughly the last six months, so revision sizes
+  before that cannot be measured
+- `best-view-prices` gives each run's label but not its publication time
+- The newest days are II or BM and can still change
 
 ### Generation by fuel type (FUELHH)
 
@@ -124,14 +208,16 @@ Base URL: `https://data.elexon.co.uk/bmrs/api/v1`. No API key needed.
 * ECMWF IFS runs are archived from 14 March 2024 (older runs are described as hindcasts).
   Most other models only from 2 April 2026
 * ECMWF upgraded its model in May 2026, so forecast quality may shift within the data
-* Runs take about 4 to 6 hours to become available. **For day D we use the 00:00 UTC run on D-1**
+* Runs take about 4 to 6 hours to become available. **For day D we use the 00:00 UTC run on D-1**.
+  If that run is missing or has blank values, the newest complete earlier run is used
+  (every 6 h, up to 48 h back)
 * Each run covers 168 hours
 * Variables: `temperature_2m` (°C), `shortwave_radiation` (W/m², average over the previous hour),
   `wind_speed_100m` (km/h), `cloud_cover` (%)
 * `shortwave_radiation` is empty in the first hour of a run (no previous hour)
 * Several locations can be requested in one call; results come back as a list in request order,
   with coordinates snapped to the model grid
-* 11 points: 5 offshore wind, 1 onshore wind, 3 solar, 3 demand (temperature).
+* 12 points: 5 offshore wind, 1 onshore wind, 3 solar, 3 demand (temperature).
   This is a simplification; weighting by installed capacity would be better
 * Free API for non commercial use
 
@@ -184,9 +270,12 @@ Silver keeps the latest one.
 
 ### Known permanent gaps
 
-**Open-Meteo, 4 days** (2025-08-06, 2025-08-07, 2025-08-09, 2025-08-10).
-The API says the ECMWF IFS 00:00 runs for 2025-08-05, 06, 08 and 09 are not
-available. Retrying does not help. Models must handle missing weather days.
+**Open-Meteo, 2 days** (2025-08-08, 2025-08-09). The API says several ECMWF IFS
+runs in early August 2025 are not available, and retrying does not help. After the
+backfill, the weather fallback (newest complete earlier run, up to 48 h back) rescued
+2025-08-06, 2025-08-07, 2025-08-10 and 2026-06-24. For 2025-08-08 and 2025-08-09 no
+complete run exists within 48 h, so they stay as gaps. Models must handle missing
+weather days.
 
 **Day ahead wind and solar, 2 days** (2026-04-26, 2026-04-27). Elexon returned
 every record twice with the same publishTime (2026-04-25T16:45:04Z) but

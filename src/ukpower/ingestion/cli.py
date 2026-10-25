@@ -4,6 +4,7 @@ Examples:
     python -m ukpower.ingestion.cli incremental --dry-run
     python -m ukpower.ingestion.cli backfill --start 2025-01-01 --end 2025-01-31
     python -m ukpower.ingestion.cli incremental --sources elexon_system_prices
+    python -m ukpower.ingestion.cli backfill --start 2026-10-13 --end 2026-10-13 --force
 """
 
 from __future__ import annotations
@@ -33,10 +34,17 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--start", type=date.fromisoformat, help="backfill only: first day")
     parser.add_argument("--end", type=date.fromisoformat, help="backfill only: last day")
     parser.add_argument("--dry-run", action="store_true", help="show the plan, fetch nothing")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="backfill only: fetch the days again even if already landed",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
     if args.mode == "incremental" and (args.start or args.end):
         parser.error("--start and --end are only for backfill")
+    if args.force and (args.mode != "backfill" or not (args.start and args.end)):
+        parser.error("--force needs backfill with both --start and --end")
     return args
 
 
@@ -74,9 +82,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.mode == "incremental"
             else 0
         )
-        days = plan_days(
-            source, landing.landed_partitions(source.name), start, latest, refetch_days
-        )
+        # --force: treat nothing as landed, so every day in the range is fetched again
+        landed = set() if args.force else landing.landed_partitions(source.name)
+        days = plan_days(source, landed, start, latest, refetch_days)
         plans.append((source, days))
         first, last = (days[0], days[-1]) if days else (None, None)
         logger.info(

@@ -95,6 +95,19 @@ def test_selected_sources_keep_requested_order() -> None:
     assert cli.select_sources([a, b], "b,a") == [b, a]
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["incremental", "--force"],
+        ["backfill", "--force"],
+        ["backfill", "--start", "2025-01-01", "--force"],
+    ],
+)
+def test_force_needs_backfill_with_start_and_end(argv: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        cli.parse_args(argv)
+
+
 # Running
 
 
@@ -133,3 +146,15 @@ def test_backfill_skips_days_already_landed(monkeypatch: pytest.MonkeyPatch) -> 
     cli.main(BACKFILL)
 
     assert second.fetched == []
+
+
+def test_force_backfill_fetches_landed_days_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = PretendSource("pretend")
+    use_sources(monkeypatch, first)
+    cli.main(BACKFILL)
+
+    forced = PretendSource("pretend")
+    use_sources(monkeypatch, forced)
+    assert cli.main([*BACKFILL, "--force"]) == 0
+
+    assert forced.fetched == [date(2025, 1, 1), date(2025, 1, 2), date(2025, 1, 3)]

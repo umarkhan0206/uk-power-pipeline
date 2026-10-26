@@ -59,3 +59,14 @@ open_meteo:
 
 carbon_intensity:
   base_url: https://api.carbonintensity.org.uk
+
+forecast:
+  # Exported from workspace.gold.price_features (databricks/04_gold_build.ipynb).
+  gold_file: data/gold/price_features.parquet
+  # Walk forward testing starts here; everything before is the first training set.
+  test_start: "2025-10-01"
+  # Training only uses target days that ended at least this many days before each retrain,
+  # because the newest settled prices would not have existed yet in real life.
+  label_gap_days: 2
+  # The "typical price" baseline looks at this many days before the decision.
+  profile_days: 28

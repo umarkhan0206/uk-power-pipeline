@@ -104,6 +104,19 @@ class CarbonIntensitySettings(StrictModel):
     base_url: str = Field(pattern=URL_PATTERN)
 
 
+class ForecastSettings(StrictModel):
+    """Walk forward testing and baselines for the price forecaster."""
+
+    #: Gold table exported from Databricks. Relative paths start at the project root.
+    gold_file: Path = Path("data/gold/price_features.parquet")
+    #: First month that is forecast. Everything before it is the first training set.
+    test_start: date = date(2025, 10, 1)
+    #: Training only uses target days that ended at least this many days before a retrain.
+    label_gap_days: int = Field(default=2, ge=0, le=14)
+    #: Days before the decision used by the "typical price for this time of day" baseline.
+    profile_days: int = Field(default=28, ge=7, le=365)
+
+
 class Settings(StrictModel):
     """All project settings."""
 
@@ -115,6 +128,7 @@ class Settings(StrictModel):
     elexon: ElexonSettings
     open_meteo: OpenMeteoSettings
     carbon_intensity: CarbonIntensitySettings
+    forecast: ForecastSettings = Field(default_factory=ForecastSettings)
 
     @field_validator("timezone")
     @classmethod
@@ -141,6 +155,12 @@ class Settings(StrictModel):
     def data_path(self) -> Path:
         """Absolute data directory. Relative paths are resolved from the project root."""
         return self.data_dir if self.data_dir.is_absolute() else PROJECT_ROOT / self.data_dir
+
+    @property
+    def gold_path(self) -> Path:
+        """Absolute path of the Gold export. Relative paths are resolved from the project root."""
+        path = self.forecast.gold_file
+        return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def load_settings(path: Path | None = None) -> Settings:

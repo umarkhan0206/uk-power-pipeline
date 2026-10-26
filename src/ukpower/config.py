@@ -112,7 +112,9 @@ class ForecastSettings(StrictModel):
     #: First month that is forecast. Everything before it is the first training set.
     test_start: date = date(2025, 10, 1)
     #: Training only uses target days that ended at least this many days before a retrain.
-    label_gap_days: int = Field(default=2, ge=0, le=14)
+    #: Newest training day = decision day minus this many days. At least 1, because the
+    #: decision day itself is still running at 10:00.
+    label_gap_days: int = Field(default=2, ge=1, le=14)
     #: Days before the decision used by the "typical price for this time of day" baseline.
     profile_days: int = Field(default=28, ge=7, le=365)
 

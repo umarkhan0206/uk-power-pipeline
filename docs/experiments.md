@@ -40,7 +40,25 @@ test results, based on the diagnosis above.
 Beat the bar in 11 of 13 months (lost November 2025 by £0.48 and May 2026 by £2.35).
 Largest gains in the drifting months: September 2026 £44.60 vs £52.72.
 Most used features after the typical price: wind forecast, then demand forecasts.
+## Variant 3: ranges (quantile LightGBM on the residual set up)
 
+Four more models per month at the 10, 25, 75 and 90% levels; the variant 2 median model
+is the 50% level. Each half hour's five levels are sorted so they never cross
+(needed on 1,646 of 18,192 half hours). Range baseline: the 10 to 90% levels of the same
+28 day window as the typical price. Scored on 18,192 half hours.
+
+| | Typical | LightGBM | Ideal |
+|---|---|---|---|
+| Inside the 10 to 90% band | 67.8% | 73.2% | 80% |
+| Below the 10% line | 14.4% | 10.7% | 10% |
+| Above the 90% line | 17.9% | 16.1% | 10% |
+| Band width | £82.83 | £81.64 | |
+| Pinball (average of 5 levels) | 12.00 | 10.56 | |
+
+**Result:** narrower and better than the baseline (pinball 12% better), with a well
+calibrated lower edge. But the band is too narrow on the upside: the price exceeds the
+90% line 16.1% of the time, and in volatile months coverage falls to 52% (March 2026)
+and 60% (September 2026). Quantile models are unstable (trees from 9 to 2,137).
 ## Notes
 
 - The newest training targets are today's settled view, which in real life would not

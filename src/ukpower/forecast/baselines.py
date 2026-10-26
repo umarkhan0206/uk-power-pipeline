@@ -6,6 +6,8 @@ publish time in Gold, and the typical price profile obeys the same label gap as 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 
@@ -22,21 +24,47 @@ def lag_forecast(test: pd.DataFrame, primary: str, fallback: str | None = None) 
     return forecast
 
 
+def _window(
+    history: pd.DataFrame, day: pd.Timestamp, label_gap_days: int, profile_days: int
+) -> pd.DataFrame:
+    """Known days for target day D: decision day is D-1, newest day is D-1-gap."""
+    newest = day - pd.Timedelta(days=1 + label_gap_days)
+    oldest = newest - pd.Timedelta(days=profile_days - 1)
+    days = history["settlement_date"]
+    return history[(days >= oldest) & (days <= newest)]
+
+
 def profile_forecast(
     history: pd.DataFrame, test: pd.DataFrame, label_gap_days: int, profile_days: int
 ) -> pd.Series:
-    """Median price for this UK time of day, weekday or weekend, over recent known days.
-
-    For target day D the decision day is D-1, so the newest day used is
-    D - 1 - label_gap_days, and the window covers profile_days days up to it.
-    """
+    """Median price for this UK time of day, weekday or weekend, over recent known days."""
     out = pd.Series(np.nan, index=test.index, dtype=float)
-    history_day = history["settlement_date"]
     for day, rows in test.groupby("settlement_date"):
-        newest = day - pd.Timedelta(days=1 + label_gap_days)
-        oldest = newest - pd.Timedelta(days=profile_days - 1)
-        window = history[(history_day >= oldest) & (history_day <= newest)]
+        window = _window(history, day, label_gap_days, profile_days)
         typical = window.groupby(PROFILE_KEYS)[TARGET].median()
         keys = pd.MultiIndex.from_frame(rows[PROFILE_KEYS])
         out.loc[rows.index] = typical.reindex(keys).to_numpy()
+    return out
+
+
+def profile_quantiles(
+    history: pd.DataFrame,
+    test: pd.DataFrame,
+    label_gap_days: int,
+    profile_days: int,
+    quantiles: Sequence[float],
+) -> pd.DataFrame:
+    """Like profile_forecast, but several levels (for example 10% and 90%) of the same window.
+
+    Returns one column per level, named by the level itself.
+    """
+    levels = list(quantiles)
+    out = pd.DataFrame(np.nan, index=test.index, columns=levels, dtype=float)
+    for day, rows in test.groupby("settlement_date"):
+        window = _window(history, day, label_gap_days, profile_days)
+        if window.empty:
+            continue
+        table = window.groupby(PROFILE_KEYS)[TARGET].quantile(levels).unstack()
+        keys = pd.MultiIndex.from_frame(rows[PROFILE_KEYS])
+        out.loc[rows.index, levels] = table.reindex(keys)[levels].to_numpy()
     return out

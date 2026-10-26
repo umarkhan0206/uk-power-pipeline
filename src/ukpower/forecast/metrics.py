@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 
 
 @dataclass(frozen=True)
@@ -36,3 +37,22 @@ def score(actual: pd.Series, forecast: pd.Series) -> Score:
         mae=float(np.mean(np.abs(error))),
         rmse=float(np.sqrt(np.mean(error**2))),
     )
+
+
+def pinball(actual: ArrayLike, forecast: ArrayLike, alpha: float) -> float:
+    """Average quantile (pinball) loss for one level alpha. Lower is better.
+
+    A forecast for the 90% level is punished 9 times more for being too low than too high,
+    so the best forecast is the value the price stays below 90% of the time.
+    Pairs with a missing value are left out.
+
+    Raises:
+        ValueError: if nothing is left to score.
+    """
+    a = np.asarray(actual, dtype=float)
+    f = np.asarray(forecast, dtype=float)
+    both = ~(np.isnan(a) | np.isnan(f))
+    if not both.any():
+        raise ValueError("nothing to score")
+    diff = a[both] - f[both]
+    return float(np.mean(np.maximum(alpha * diff, (alpha - 1) * diff)))

@@ -1,9 +1,10 @@
 """Walk forward evaluation of the baselines and LightGBM.
 
-LightGBM runs in two variants (see docs/experiments.md):
+LightGBM point forecasts run in two variants (see docs/experiments.md):
 * direct: forecasts the price itself
-* residual: forecasts the distance from the 28 day typical price, then adds it back,
-  so the baseline sets the level and LightGBM corrects the shape
+* residual: forecasts the distance from the 28 day typical price, then adds it back
+Ranges (variant 3) use the residual set up with quantile models at 10, 25, 75 and 90%;
+the residual median model is the 50% level.
 
 Run:
     python -m ukpower.forecast.evaluate
@@ -19,10 +20,11 @@ from collections.abc import Sequence
 import pandas as pd
 
 from ukpower.config import PROJECT_ROOT, ForecastSettings, load_settings
-from ukpower.forecast.baselines import lag_forecast, profile_forecast
+from ukpower.forecast.baselines import lag_forecast, profile_forecast, profile_quantiles
 from ukpower.forecast.data import TARGET, feature_columns, load_gold
 from ukpower.forecast.metrics import score
 from ukpower.forecast.models import fit_gbm, predict
+from ukpower.forecast.ranges import QUANTILES, qcol, range_summary, sort_quantiles
 from ukpower.forecast.splits import Fold, monthly_folds, split
 from ukpower.logging_setup import setup_logging
 
@@ -41,8 +43,10 @@ def add_profile(frame: pd.DataFrame, label_gap_days: int, profile_days: int) -> 
     return frame.assign(**{PROFILE: profile_forecast(frame, frame, label_gap_days, profile_days)})
 
 
-def run_baselines(frame: pd.DataFrame, folds: list[Fold]) -> pd.DataFrame:
-    """One row per test half hour: the actual price and every baseline's forecast."""
+def run_baselines(
+    frame: pd.DataFrame, folds: list[Fold], label_gap_days: int, profile_days: int
+) -> pd.DataFrame:
+    """One row per test half hour: the actual price, the point baselines and the range baseline."""
     parts = []
     for fold in folds:
         _, test = split(frame, fold)
@@ -51,12 +55,20 @@ def run_baselines(frame: pd.DataFrame, folds: list[Fold]) -> pd.DataFrame:
         out["same_hh_7d"] = lag_forecast(test, "price_lag7", fallback="price_lag3")
         out["same_hh_3d"] = lag_forecast(test, "price_lag3")
         out[PROFILE] = test[PROFILE]
+        levels = profile_quantiles(frame, test, label_gap_days, profile_days, QUANTILES)
+        for q in QUANTILES:
+            out[qcol("typical", q)] = levels[q]
         parts.append(out)
     return pd.concat(parts)
 
 
 def run_lightgbm(
-    frame: pd.DataFrame, folds: list[Fold], cfg: ForecastSettings, variant: str
+    frame: pd.DataFrame,
+    folds: list[Fold],
+    cfg: ForecastSettings,
+    variant: str,
+    objective: str = "l1",
+    alpha: float | None = None,
 ) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
     """Monthly retrained LightGBM: forecasts, per fold training details, mean importance."""
     base = [c for c in feature_columns(frame) if c != PROFILE]
@@ -69,11 +81,12 @@ def run_lightgbm(
     if TARGET in features or RESIDUAL in features:
         raise ValueError("the answer must never be a feature")
 
+    label = variant if alpha is None else f"{variant} q{round(alpha * 100):02d}"
     forecasts, details, importances = [], [], []
     for fold in folds:
         train, test = split(frame, fold)
         train = train.assign(**{RESIDUAL: train[TARGET] - train[PROFILE]})
-        model = fit_gbm(train, features, cfg.lightgbm, target=target)
+        model = fit_gbm(train, features, cfg.lightgbm, objective, alpha, target=target)
         forecast = predict(model, test)
         if variant == "residual":
             forecast = forecast + test[PROFILE]
@@ -81,7 +94,7 @@ def run_lightgbm(
         gain = pd.Series(model.booster.feature_importance("gain"), index=features)
         importances.append(gain / gain.sum())
         details.append({"month": fold.test_start.strftime("%Y-%m"), "trees": model.best_iteration})
-        logger.info("LightGBM %s %s: %d trees", variant, details[-1]["month"], model.best_iteration)
+        logger.info("LightGBM %s %s: %d trees", label, details[-1]["month"], model.best_iteration)
     importance = pd.concat(importances, axis=1).mean(axis=1).sort_values(ascending=False)
     return pd.concat(forecasts), pd.DataFrame(details).set_index("month"), importance
 
@@ -126,14 +139,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     folds = monthly_folds(first, last, cfg.test_start, cfg.label_gap_days)
     logger.info("%d folds, %s to %s", len(folds), folds[0].test_start, folds[-1].test_end)
 
-    forecasts = run_baselines(frame, folds)
+    forecasts = run_baselines(frame, folds, cfg.label_gap_days, cfg.profile_days)
     trees, importance = {}, {}
     for variant in VARIANTS:
         forecast, details, imp = run_lightgbm(frame, folds, cfg, variant)
         forecasts[f"lgbm_{variant}"] = forecast
         trees[variant] = details["trees"]
         importance[variant] = imp
+
+    # Ranges: the residual median model is the 50% level; the others are quantile models
+    forecasts[qcol("lgbm", 0.5)] = forecasts["lgbm_residual"]
+    for q in QUANTILES:
+        if q == 0.5:
+            continue
+        forecast, details, _ = run_lightgbm(
+            frame, folds, cfg, "residual", objective="quantile", alpha=q
+        )
+        forecasts[qcol("lgbm", q)] = forecast
+        trees[f"q{round(q * 100):02d}"] = details["trees"]
+    forecasts, crossed_lgbm = sort_quantiles(forecasts, "lgbm")
+    forecasts, crossed_typical = sort_quantiles(forecasts, "typical")
+
     overall, monthly = summarise(forecasts, METHODS)
+    range_overall, range_monthly = range_summary(forecasts, ["typical", "lgbm"])
 
     out = settings.data_path / "results" / "forecasts.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -147,6 +175,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         "\nTop 10 features, residual variant (share of gain, averaged over months):\n"
         + (100 * importance["residual"].head(10)).round(1).to_string()
+    )
+    print(
+        f"\nCrossed ranges fixed by sorting: LightGBM {crossed_lgbm:,}, typical {crossed_typical:,}"
+    )
+    print(
+        "\nRanges overall (coverage in %, width and pinball in £/MWh):\n"
+        + range_overall.T.to_string()
+    )
+    print(
+        "\nRanges by month (share inside the 10 to 90% band, and its width):\n"
+        + range_monthly.to_string()
     )
     logger.info("Saved forecasts to %s", out)
     return 0

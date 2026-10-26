@@ -104,6 +104,22 @@ class CarbonIntensitySettings(StrictModel):
     base_url: str = Field(pattern=URL_PATTERN)
 
 
+class LightGbmSettings(StrictModel):
+    """LightGBM settings, fixed before any test month is scored."""
+
+    learning_rate: float = Field(default=0.05, gt=0, le=1)
+    num_leaves: int = Field(default=31, ge=2, le=1024)
+    min_child_samples: int = Field(default=50, ge=1)
+    feature_fraction: float = Field(default=0.8, gt=0, le=1)
+    bagging_fraction: float = Field(default=0.8, gt=0, le=1)
+    lambda_l2: float = Field(default=1.0, ge=0)
+    max_rounds: int = Field(default=3000, ge=10)
+    early_stopping_rounds: int = Field(default=100, ge=5)
+    #: The last days of each month's training data, held back to choose the number of trees.
+    validation_days: int = Field(default=28, ge=7, le=120)
+    seed: int = 42
+
+
 class ForecastSettings(StrictModel):
     """Walk forward testing and baselines for the price forecaster."""
 
@@ -117,6 +133,7 @@ class ForecastSettings(StrictModel):
     label_gap_days: int = Field(default=2, ge=1, le=14)
     #: Days before the decision used by the "typical price for this time of day" baseline.
     profile_days: int = Field(default=28, ge=7, le=365)
+    lightgbm: LightGbmSettings = Field(default_factory=LightGbmSettings)
 
 
 class Settings(StrictModel):

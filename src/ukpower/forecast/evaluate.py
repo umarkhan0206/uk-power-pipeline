@@ -1,4 +1,9 @@
-"""Walk forward evaluation of the baselines.
+"""Walk forward evaluation of the baselines and LightGBM.
+
+LightGBM runs in two variants (see docs/experiments.md):
+* direct: forecasts the price itself
+* residual: forecasts the distance from the 28 day typical price, then adds it back,
+  so the baseline sets the level and LightGBM corrects the shape
 
 Run:
     python -m ukpower.forecast.evaluate
@@ -13,22 +18,30 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from ukpower.config import PROJECT_ROOT, load_settings
+from ukpower.config import PROJECT_ROOT, ForecastSettings, load_settings
 from ukpower.forecast.baselines import lag_forecast, profile_forecast
-from ukpower.forecast.data import TARGET, load_gold
+from ukpower.forecast.data import TARGET, feature_columns, load_gold
 from ukpower.forecast.metrics import score
+from ukpower.forecast.models import fit_gbm, predict
 from ukpower.forecast.splits import Fold, monthly_folds, split
 from ukpower.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
-BASELINES = ["same_hh_7d", "same_hh_3d", "typical_28d"]
+PROFILE = "typical_28d"
+RESIDUAL = "residual_target"  # built from the answer, so it only ever exists inside training
+VARIANTS = ["direct", "residual"]
+BASELINES = ["same_hh_7d", "same_hh_3d", PROFILE]
+METHODS = [*BASELINES, *[f"lgbm_{v}" for v in VARIANTS]]
 KEEP = ["settlement_date", "settlement_period", "start_time_utc", TARGET, "target_is_final"]
 
 
-def run_baselines(
-    frame: pd.DataFrame, folds: list[Fold], label_gap_days: int, profile_days: int
-) -> pd.DataFrame:
+def add_profile(frame: pd.DataFrame, label_gap_days: int, profile_days: int) -> pd.DataFrame:
+    """Add the typical price for every row, each from its own window before its own gap."""
+    return frame.assign(**{PROFILE: profile_forecast(frame, frame, label_gap_days, profile_days)})
+
+
+def run_baselines(frame: pd.DataFrame, folds: list[Fold]) -> pd.DataFrame:
     """One row per test half hour: the actual price and every baseline's forecast."""
     parts = []
     for fold in folds:
@@ -37,10 +50,40 @@ def run_baselines(
         out["month"] = fold.test_start.strftime("%Y-%m")
         out["same_hh_7d"] = lag_forecast(test, "price_lag7", fallback="price_lag3")
         out["same_hh_3d"] = lag_forecast(test, "price_lag3")
-        # profile_forecast picks its own window before each day's gap, so the full frame is safe
-        out["typical_28d"] = profile_forecast(frame, test, label_gap_days, profile_days)
+        out[PROFILE] = test[PROFILE]
         parts.append(out)
     return pd.concat(parts)
+
+
+def run_lightgbm(
+    frame: pd.DataFrame, folds: list[Fold], cfg: ForecastSettings, variant: str
+) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
+    """Monthly retrained LightGBM: forecasts, per fold training details, mean importance."""
+    base = [c for c in feature_columns(frame) if c != PROFILE]
+    if variant == "direct":
+        features, target = base, TARGET
+    elif variant == "residual":
+        features, target = [*base, PROFILE], RESIDUAL
+    else:
+        raise ValueError(f"unknown variant {variant!r}")
+    if TARGET in features or RESIDUAL in features:
+        raise ValueError("the answer must never be a feature")
+
+    forecasts, details, importances = [], [], []
+    for fold in folds:
+        train, test = split(frame, fold)
+        train = train.assign(**{RESIDUAL: train[TARGET] - train[PROFILE]})
+        model = fit_gbm(train, features, cfg.lightgbm, target=target)
+        forecast = predict(model, test)
+        if variant == "residual":
+            forecast = forecast + test[PROFILE]
+        forecasts.append(forecast)
+        gain = pd.Series(model.booster.feature_importance("gain"), index=features)
+        importances.append(gain / gain.sum())
+        details.append({"month": fold.test_start.strftime("%Y-%m"), "trees": model.best_iteration})
+        logger.info("LightGBM %s %s: %d trees", variant, details[-1]["month"], model.best_iteration)
+    importance = pd.concat(importances, axis=1).mean(axis=1).sort_values(ascending=False)
+    return pd.concat(forecasts), pd.DataFrame(details).set_index("month"), importance
 
 
 def common_rows(forecasts: pd.DataFrame, methods: list[str]) -> pd.Series:
@@ -77,23 +120,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     setup_logging(PROJECT_ROOT / "logs", args.log_level)
     cfg = settings.forecast
 
-    frame = load_gold(settings.gold_path)
+    frame = add_profile(load_gold(settings.gold_path), cfg.label_gap_days, cfg.profile_days)
     first = frame["settlement_date"].min().date()
     last = frame["settlement_date"].max().date()
     folds = monthly_folds(first, last, cfg.test_start, cfg.label_gap_days)
     logger.info("%d folds, %s to %s", len(folds), folds[0].test_start, folds[-1].test_end)
 
-    forecasts = run_baselines(frame, folds, cfg.label_gap_days, cfg.profile_days)
-    overall, monthly = summarise(forecasts, BASELINES)
+    forecasts = run_baselines(frame, folds)
+    trees, importance = {}, {}
+    for variant in VARIANTS:
+        forecast, details, imp = run_lightgbm(frame, folds, cfg, variant)
+        forecasts[f"lgbm_{variant}"] = forecast
+        trees[variant] = details["trees"]
+        importance[variant] = imp
+    overall, monthly = summarise(forecasts, METHODS)
 
-    out = settings.data_path / "results" / "baseline_forecasts.parquet"
+    out = settings.data_path / "results" / "forecasts.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)
     forecasts.to_parquet(out)
 
-    fair = int(common_rows(forecasts, BASELINES).sum())
+    fair = int(common_rows(forecasts, METHODS).sum())
     print(f"\nTest half hours: {len(forecasts):,} | scored (all methods present): {fair:,}")
     print("\nOverall (£/MWh):\n" + overall.to_string())
     print("\nMAE by month (£/MWh):\n" + monthly.to_string())
+    print("\nTrees per month:\n" + pd.DataFrame(trees).to_string())
+    print(
+        "\nTop 10 features, residual variant (share of gain, averaged over months):\n"
+        + (100 * importance["residual"].head(10)).round(1).to_string()
+    )
     logger.info("Saved forecasts to %s", out)
     return 0
 

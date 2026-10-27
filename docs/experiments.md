@@ -59,6 +59,26 @@ is the 50% level. Each half hour's five levels are sorted so they never cross
 calibrated lower edge. But the band is too narrow on the upside: the price exceeds the
 90% line 16.1% of the time, and in volatile months coverage falls to 52% (March 2026)
 and 60% (September 2026). Quantile models are unstable (trees from 9 to 2,137).
+
+## Variant 4: monthly calibration of the ranges
+
+Each quantile model's practice run (trained without the last 28 training days) measures
+its errors on those days; each level is shifted by the matching percentile of those errors
+for the whole coming month. The test month is never used. Median unchanged.
+
+| | LightGBM | Calibrated | Ideal |
+|---|---|---|---|
+| Inside the 10 to 90% band | 73.2% | 75.4% | 80% |
+| Below the 90% line | 83.9% | 86.2% | 90% |
+| Band width | £81.64 | £87.62 | |
+| Pinball | 10.56 | 10.58 | |
+
+**Result:** coverage improves by 2.3 points, but the band is 7% wider and pinball is
+unchanged, so this is a trade of width for coverage, not a better range. Month by month
+it helps after volatile spells (October 2026 88.4%, from 70.5%) and hurts after calm ones
+(March 2026 44.8%, from 52.1%): a monthly shift reacts too slowly to changes in volatility.
+**Not adopted as the headline.** Candidates: a daily adaptive calibration, and new
+information about the market level (Elexon market index price).
 ## Notes
 
 - The newest training targets are today's settled view, which in real life would not

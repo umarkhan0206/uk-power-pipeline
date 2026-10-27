@@ -34,17 +34,26 @@ def one_way_efficiency(battery: BatterySettings) -> float:
     return math.sqrt(battery.round_trip_efficiency)
 
 
-def plan_day(prices: np.ndarray, battery: BatterySettings) -> Schedule:
+def plan_day(
+    prices: np.ndarray, battery: BatterySettings, sell_prices: np.ndarray | None = None
+) -> Schedule:
     """The most profitable schedule for these prices.
 
+    `prices` is what charging costs. `sell_prices` is what discharging earns; it defaults to
+    the same prices. Planning with a higher buy price and a lower sell price makes the battery
+    trade only when a trade pays under cautious assumptions.
+
     Raises:
-        ValueError: if any price is missing.
+        ValueError: if any price is missing or the two price lists differ in length.
         RuntimeError: if the solver fails.
     """
-    prices = np.asarray(prices, dtype=float)
-    if not np.all(np.isfinite(prices)):
+    buy = np.asarray(prices, dtype=float)
+    sell = buy if sell_prices is None else np.asarray(sell_prices, dtype=float)
+    if buy.shape != sell.shape:
+        raise ValueError("buy and sell prices must cover the same half hours")
+    if not (np.all(np.isfinite(buy)) and np.all(np.isfinite(sell))):
         raise ValueError("every half hour needs a price to plan a day")
-    n = len(prices)
+    n = len(buy)
     eta = one_way_efficiency(battery)
     step = battery.power_mw * HALF_HOUR_H  # most energy in one half hour
     cap = battery.capacity_mwh
@@ -53,10 +62,10 @@ def plan_day(prices: np.ndarray, battery: BatterySettings) -> Schedule:
     c, d, s, u = (slice(i * n, (i + 1) * n) for i in range(4))
     size = 4 * n
 
-    # Minimise cost: pay price x charge, earn price x discharge, pay wear on discharge
+    # Minimise cost: pay the buy price to charge, earn the sell price, pay wear on discharge
     objective = np.zeros(size)
-    objective[c] = prices
-    objective[d] = -prices + battery.wear_cost_per_mwh
+    objective[c] = buy
+    objective[d] = -sell + battery.wear_cost_per_mwh
 
     rows, lower, upper = [], [], []
 

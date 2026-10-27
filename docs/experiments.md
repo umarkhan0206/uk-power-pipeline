@@ -79,6 +79,31 @@ it helps after volatile spells (October 2026 88.4%, from 70.5%) and hurts after 
 (March 2026 44.8%, from 52.1%): a monthly shift reacts too slowly to changes in volatility.
 **Not adopted as the headline.** Candidates: a daily adaptive calibration, and new
 information about the market level (Elexon market index price).
+
+## Variant 5: market index price (MID) features
+
+New source `elexon_market_index` (APX traded price; no trades means missing). Three new
+Gold features, all from days up to D-2 (about 10 hours before the 10:00 decision on D-1):
+`mid_lag2` (same half hour), `mid_7d_mean` (level, D-8 to D-2, blank if under 300 traded
+half hours) and `mid_7d_profile` (median for the UK time of day, same days). The model
+settings are unchanged; all LightGBM models now see 40 features. Baselines unchanged.
+
+| | Before MID | With MID |
+|---|---|---|
+| LightGBM direct, MAE | 32.87 | 30.79 |
+| LightGBM residual, MAE | 30.22 | 29.83 |
+| LightGBM residual, RMSE | 41.60 | 41.25 |
+| Ranges: pinball | 10.56 | 10.33 |
+| Ranges: inside 10 to 90% | 73.15% | 72.92% |
+| Ranges: band width | £81.64 | £80.17 |
+
+**Result:** MID carries the price level: the direct model improved by 6.3%, and its worst
+month (October 2026) by £10.58. The residual model, which already took the level from the
+28 day typical price, improved by 1.3%. Best model now: MAE 29.83 (10.4% better than the
+bar), RMSE 41.25 (12.6% better), pinball 10.33 (13.9% better than the range baseline),
+winning 11 of 13 months. `mid_7d_mean` ranks 4th by gain. Upside coverage is still too low.
+Adding the most promising missing information gained about 1%, which suggests the residual
+model is close to what is knowable at 10:00 the day before for this price.
 ## Notes
 
 - The newest training targets are today's settled view, which in real life would not

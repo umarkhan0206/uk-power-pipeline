@@ -45,6 +45,8 @@ def make_day(date: str, actual: list[float], forecast: list[float]) -> pd.DataFr
             "lgbm_residual": forecast,
             "typical_28d": forecast,
             "same_hh_7d": forecast,
+            "lgbm_q25": forecast,
+            "lgbm_q75": forecast,
         }
     )
 

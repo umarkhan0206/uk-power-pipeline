@@ -136,6 +136,30 @@ class ForecastSettings(StrictModel):
     lightgbm: LightGbmSettings = Field(default_factory=LightGbmSettings)
 
 
+class BatterySettings(StrictModel):
+    """The simulated battery. It starts and ends every day empty."""
+
+    power_mw: float = Field(default=1.0, gt=0)
+    capacity_mwh: float = Field(default=2.0, gt=0)
+    round_trip_efficiency: float = Field(default=0.88, gt=0, le=1)
+    max_cycles_per_day: float = Field(default=2.0, gt=0, le=10)
+    wear_cost_per_mwh: float = Field(default=10.0, ge=0)
+
+
+class FixedRuleSettings(StrictModel):
+    """Charge and discharge at fixed UK times, with no forecast."""
+
+    charge_uk_hours: list[float] = Field(default=[2.0, 2.5, 3.0, 3.5], min_length=1)
+    discharge_uk_hours: list[float] = Field(default=[17.0, 17.5, 18.0, 18.5], min_length=1)
+
+
+class BacktestSettings(StrictModel):
+    """Battery trading backtest."""
+
+    battery: BatterySettings = Field(default_factory=BatterySettings)
+    fixed_rule: FixedRuleSettings = Field(default_factory=FixedRuleSettings)
+
+
 class Settings(StrictModel):
     """All project settings."""
 
@@ -148,6 +172,7 @@ class Settings(StrictModel):
     open_meteo: OpenMeteoSettings
     carbon_intensity: CarbonIntensitySettings
     forecast: ForecastSettings = Field(default_factory=ForecastSettings)
+    backtest: BacktestSettings = Field(default_factory=BacktestSettings)
 
     @field_validator("timezone")
     @classmethod

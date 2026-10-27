@@ -83,3 +83,18 @@ forecast:
     early_stopping_rounds: 100
     validation_days: 28
     seed: 42
+
+
+backtest:
+  # A typical GB grid battery. Assumptions, explained in docs/backtest.md.
+  battery:
+    power_mw: 1.0
+    capacity_mwh: 2.0
+    round_trip_efficiency: 0.88
+    max_cycles_per_day: 2.0
+    # Wear cost per MWh discharged, so tiny price gaps are not worth the battery's life.
+    wear_cost_per_mwh: 10.0
+  # The "no forecast" rule: charge in the night, discharge in the evening peak (UK time).
+  fixed_rule:
+    charge_uk_hours: [2.0, 2.5, 3.0, 3.5]
+    discharge_uk_hours: [17.0, 17.5, 18.0, 18.5]

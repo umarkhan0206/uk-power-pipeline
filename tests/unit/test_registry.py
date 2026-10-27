@@ -5,8 +5,8 @@ from ukpower.ingestion.landing import SAFE_NAME
 from ukpower.ingestion.sources import build_sources
 
 
-def test_all_nine_sources_are_built() -> None:
-    assert len(build_sources(load_settings())) == 10
+def test_all_eleven_sources_are_built() -> None:
+    assert len(build_sources(load_settings())) == 11
 
 
 def test_source_names_are_unique() -> None:

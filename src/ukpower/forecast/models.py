@@ -6,7 +6,6 @@ training data with that number, so the newest allowed days are used too. The tes
 is never used to choose anything.
 """
 
-
 from __future__ import annotations
 
 import logging

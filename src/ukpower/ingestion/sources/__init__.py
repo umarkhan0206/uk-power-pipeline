@@ -12,6 +12,7 @@ from ukpower.ingestion.sources.elexon_daily import (
     ElexonWindSolarDayAhead,
 )
 from ukpower.ingestion.sources.elexon_forecasts import ElexonDemandForecast, ElexonWindForecast
+from ukpower.ingestion.sources.elexon_market_index import ElexonMarketIndex
 from ukpower.ingestion.sources.elexon_settled_prices import ElexonSettledPrices
 from ukpower.ingestion.sources.elexon_system_prices import ElexonSystemPrices
 from ukpower.ingestion.sources.open_meteo import OpenMeteoForecast
@@ -30,6 +31,7 @@ def build_sources(settings: Settings) -> list[Source]:
             settings.elexon.settled_prices.long_refetch_days,
             settings.elexon.settled_prices.long_refetch_weekday,
         ),
+        ElexonMarketIndex(elexon, tz),
         ElexonDemandOutturn(elexon, tz),
         ElexonGenerationByFuel(elexon, tz),
         ElexonWindSolarActual(elexon, tz),

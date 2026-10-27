@@ -68,3 +68,11 @@ def test_any_target_column_can_be_learned() -> None:
 def test_the_target_cannot_also_be_a_feature() -> None:
     with pytest.raises(ValueError, match="cannot also be a feature"):
         fit_gbm(make_train(), ["x", "target_price"], CFG)
+
+
+def test_holdout_errors_come_from_the_held_back_days() -> None:
+    train = make_train()
+    model = fit_gbm(train, ["x"], CFG)
+    held_back = train["settlement_date"] >= sorted(train["settlement_date"].unique())[-10]
+    assert len(model.holdout_errors) == int(held_back.sum())
+    assert abs(float(np.median(model.holdout_errors))) < 5.0  # a good model is roughly centred

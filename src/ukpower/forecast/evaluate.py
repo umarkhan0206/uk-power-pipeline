@@ -24,7 +24,13 @@ from ukpower.forecast.baselines import lag_forecast, profile_forecast, profile_q
 from ukpower.forecast.data import TARGET, feature_columns, load_gold
 from ukpower.forecast.metrics import score
 from ukpower.forecast.models import fit_gbm, predict
-from ukpower.forecast.ranges import QUANTILES, qcol, range_summary, sort_quantiles
+from ukpower.forecast.ranges import (
+    QUANTILES,
+    calibration_shift,
+    qcol,
+    range_summary,
+    sort_quantiles,
+)
 from ukpower.forecast.splits import Fold, monthly_folds, split
 from ukpower.logging_setup import setup_logging
 
@@ -69,8 +75,12 @@ def run_lightgbm(
     variant: str,
     objective: str = "l1",
     alpha: float | None = None,
-) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
-    """Monthly retrained LightGBM: forecasts, per fold training details, mean importance."""
+) -> tuple[pd.Series, pd.DataFrame, pd.Series, pd.Series]:
+    """Monthly retrained LightGBM.
+
+    Returns forecasts, per fold details, mean importance, and for quantile models the
+    calibration shift for every test row (0 for point models).
+    """
     base = [c for c in feature_columns(frame) if c != PROFILE]
     if variant == "direct":
         features, target = base, TARGET
@@ -82,7 +92,7 @@ def run_lightgbm(
         raise ValueError("the answer must never be a feature")
 
     label = variant if alpha is None else f"{variant} q{round(alpha * 100):02d}"
-    forecasts, details, importances = [], [], []
+    forecasts, details, importances, shifts = [], [], [], []
     for fold in folds:
         train, test = split(frame, fold)
         train = train.assign(**{RESIDUAL: train[TARGET] - train[PROFILE]})
@@ -90,13 +100,26 @@ def run_lightgbm(
         forecast = predict(model, test)
         if variant == "residual":
             forecast = forecast + test[PROFILE]
+        shift = 0.0 if alpha is None else calibration_shift(model.holdout_errors, alpha)
         forecasts.append(forecast)
+        shifts.append(pd.Series(shift, index=test.index))
         gain = pd.Series(model.booster.feature_importance("gain"), index=features)
         importances.append(gain / gain.sum())
-        details.append({"month": fold.test_start.strftime("%Y-%m"), "trees": model.best_iteration})
+        details.append(
+            {
+                "month": fold.test_start.strftime("%Y-%m"),
+                "trees": model.best_iteration,
+                "shift": round(shift, 2),
+            }
+        )
         logger.info("LightGBM %s %s: %d trees", label, details[-1]["month"], model.best_iteration)
     importance = pd.concat(importances, axis=1).mean(axis=1).sort_values(ascending=False)
-    return pd.concat(forecasts), pd.DataFrame(details).set_index("month"), importance
+    return (
+        pd.concat(forecasts),
+        pd.DataFrame(details).set_index("month"),
+        importance,
+        pd.concat(shifts),
+    )
 
 
 def common_rows(forecasts: pd.DataFrame, methods: list[str]) -> pd.Series:
@@ -142,26 +165,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     forecasts = run_baselines(frame, folds, cfg.label_gap_days, cfg.profile_days)
     trees, importance = {}, {}
     for variant in VARIANTS:
-        forecast, details, imp = run_lightgbm(frame, folds, cfg, variant)
+        forecast, details, imp, _ = run_lightgbm(frame, folds, cfg, variant)
         forecasts[f"lgbm_{variant}"] = forecast
         trees[variant] = details["trees"]
         importance[variant] = imp
 
-    # Ranges: the residual median model is the 50% level; the others are quantile models
+        # Ranges: the residual median model is the 50% level; the others are quantile models.
+    # "lgbmcal" is the same models with each level shifted by its held back errors.
+    shifts_table = {}
     forecasts[qcol("lgbm", 0.5)] = forecasts["lgbm_residual"]
+    forecasts[qcol("lgbmcal", 0.5)] = forecasts["lgbm_residual"]
     for q in QUANTILES:
         if q == 0.5:
             continue
-        forecast, details, _ = run_lightgbm(
+        forecast, details, _, shift = run_lightgbm(
             frame, folds, cfg, "residual", objective="quantile", alpha=q
         )
         forecasts[qcol("lgbm", q)] = forecast
+        forecasts[qcol("lgbmcal", q)] = forecast + shift
         trees[f"q{round(q * 100):02d}"] = details["trees"]
+        shifts_table[f"q{round(q * 100):02d}"] = details["shift"]
     forecasts, crossed_lgbm = sort_quantiles(forecasts, "lgbm")
+    forecasts, crossed_cal = sort_quantiles(forecasts, "lgbmcal")
     forecasts, crossed_typical = sort_quantiles(forecasts, "typical")
 
     overall, monthly = summarise(forecasts, METHODS)
-    range_overall, range_monthly = range_summary(forecasts, ["typical", "lgbm"])
+    range_overall, range_monthly = range_summary(forecasts, ["typical", "lgbm", "lgbmcal"])
 
     out = settings.data_path / "results" / "forecasts.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +206,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         + (100 * importance["residual"].head(10)).round(1).to_string()
     )
     print(
-        f"\nCrossed ranges fixed by sorting: LightGBM {crossed_lgbm:,}, typical {crossed_typical:,}"
+        f"\nCrossed ranges fixed by sorting: LightGBM {crossed_lgbm:,}, "
+        f"calibrated {crossed_cal:,}, typical {crossed_typical:,}"
+    )
+    print(
+        "\nCalibration shifts per month (£/MWh, added to each level):\n"
+        + pd.DataFrame(shifts_table).to_string()
     )
     print(
         "\nRanges overall (coverage in %, width and pinball in £/MWh):\n"

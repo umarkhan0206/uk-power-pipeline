@@ -67,3 +67,17 @@ def range_summary(
             row[f"{p}_width"] = s["width_10_90"]
         rows.append(row)
     return overall.round(2), pd.DataFrame(rows).set_index("month").round(1)
+
+
+def calibration_shift(holdout_errors: np.ndarray, level: float) -> float:
+    """How much to move a level's forecast so it would have been right on the held back days.
+
+    holdout_errors are actual minus forecast. For the 90% level, the price should end up
+    below the line 90% of the time, so the shift is the 90th percentile of the errors:
+    positive if the line was too low, negative if too high.
+    """
+    errors = np.asarray(holdout_errors, dtype=float)
+    errors = errors[np.isfinite(errors)]
+    if errors.size == 0:
+        raise ValueError("no held back errors to calibrate with")
+    return float(np.quantile(errors, level))

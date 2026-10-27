@@ -9,7 +9,7 @@ import pandas as pd
 
 from ukpower.forecast.baselines import profile_forecast, profile_quantiles
 from ukpower.forecast.metrics import pinball
-from ukpower.forecast.ranges import QUANTILES, qcol, range_scores, sort_quantiles
+from ukpower.forecast.ranges import QUANTILES, calibration_shift, qcol, range_scores, sort_quantiles
 
 
 def test_pinball_punishes_the_wrong_side_more() -> None:
@@ -60,3 +60,19 @@ def test_range_baseline_uses_the_same_window_as_the_typical_price() -> None:
     # window 12th to 16th: values 12..16
     assert list(levels.iloc[0].round(2)) == [12.4, 13.0, 14.0, 15.0, 15.6]
     assert levels.iloc[0][0.5] == profile_forecast(history, test, 3, 5).iloc[0]
+
+
+def test_calibration_shift_makes_the_level_right_on_the_held_back_days() -> None:
+    rng = np.random.default_rng(1)
+    actual = rng.normal(100.0, 20.0, 2000)
+    too_low_q90 = np.full(2000, 110.0)  # a 90% line that is too low
+    shift = calibration_shift(actual - too_low_q90, 0.9)
+    assert shift > 0
+    assert math.isclose(np.mean(actual < too_low_q90 + shift), 0.9, abs_tol=0.01)
+
+
+def test_calibration_shift_needs_errors() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="no held back errors"):
+        calibration_shift(np.array([np.nan]), 0.9)

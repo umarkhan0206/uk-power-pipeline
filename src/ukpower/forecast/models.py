@@ -6,6 +6,7 @@ training data with that number, so the newest allowed days are used too. The tes
 is never used to choose anything.
 """
 
+
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import lightgbm as lgb
+import numpy as np
 import pandas as pd
 
 from ukpower.config import LightGbmSettings
@@ -23,11 +25,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class FittedModel:
-    """A trained booster, the features it expects, and the number of trees chosen."""
+    """A trained booster, the features it expects, the number of trees chosen, and the
+    practice run's errors on the held back days (actual minus forecast), used to calibrate."""
 
     booster: lgb.Booster
     features: list[str]
     best_iteration: int
+    holdout_errors: np.ndarray
 
 
 def lgb_params(cfg: LightGbmSettings, objective: str, alpha: float | None = None) -> dict[str, Any]:
@@ -81,6 +85,8 @@ def fit_gbm(
 
     "l1" aims at the median, which suits scoring by average absolute error.
     `target` is the column to learn, for example the price or its distance from a baseline.
+    The practice model (trained without the held back days) also records its errors there,
+    so ranges can be calibrated without touching the test month.
     """
     if target in features:
         raise ValueError(f"the target {target!r} cannot also be a feature")
@@ -96,9 +102,14 @@ def fit_gbm(
         callbacks=[lgb.early_stopping(cfg.early_stopping_rounds, verbose=False)],
     )
     best = probe.best_iteration or cfg.max_rounds
+    holdout_errors = valid[target].to_numpy(dtype=float) - probe.predict(
+        valid[features], num_iteration=best
+    )
 
     final = lgb.train(params, lgb.Dataset(train[features], train[target]), num_boost_round=best)
-    return FittedModel(booster=final, features=features, best_iteration=best)
+    return FittedModel(
+        booster=final, features=features, best_iteration=best, holdout_errors=holdout_errors
+    )
 
 
 def predict(model: FittedModel, frame: pd.DataFrame) -> pd.Series:

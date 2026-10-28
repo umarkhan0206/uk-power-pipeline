@@ -45,7 +45,9 @@ def run_backtest(forecasts: pd.DataFrame, cfg: BacktestSettings) -> pd.DataFrame
             continue
         row: dict[str, object] = {"settlement_date": day, "month": group["month"].iloc[0]}
 
-        def record(name: str, schedule: Schedule, gaps: int, row: dict = row) -> None:
+        def record(
+            name: str, schedule: Schedule, gaps: int, row: dict = row, actual: object = actual
+        ) -> None:
             row[name] = profit(schedule, actual, battery)
             row[f"{name}_mwh"] = float(schedule.discharge.sum())
             row[f"{name}_gaps"] = gaps
@@ -64,7 +66,7 @@ def run_backtest(forecasts: pd.DataFrame, cfg: BacktestSettings) -> pd.DataFrame
 
 
 def summarise(daily: pd.DataFrame, drop_top_days: int = 5) -> pd.DataFrame:
-    """Totals, share of perfect foresight, losing days, MWh sold, and the same without the best days."""
+    """Totals, share of perfect foresight, losing days, MWh sold, and without the best days."""
     best_days = daily["perfect_foresight"].nlargest(drop_top_days).index
     calm = daily.drop(best_days)
     perfect, perfect_calm = daily["perfect_foresight"].sum(), calm["perfect_foresight"].sum()

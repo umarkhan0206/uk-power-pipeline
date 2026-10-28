@@ -71,3 +71,23 @@ def test_cycle_limit_is_respected() -> None:
 def test_missing_price_is_refused() -> None:
     with pytest.raises(ValueError, match="needs a price"):
         plan_day(np.array([10.0, np.nan, 100.0]), BATTERY)
+
+
+def test_without_sell_prices_planning_is_unchanged() -> None:
+    prices = np.array([10.0] * 4 + [100.0] * 4)
+    a, b = plan_day(prices, BATTERY), plan_day(prices, BATTERY, sell_prices=prices)
+    assert np.array_equal(a.charge, b.charge) and np.array_equal(a.discharge, b.discharge)
+
+
+def test_careful_planning_skips_a_trade_that_only_pays_on_the_middle_guess() -> None:
+    middle = np.array([10.0] * 4 + [100.0] * 4)
+    buy = np.array([60.0] * 4 + [130.0] * 4)  # buying might cost more
+    sell = np.array([5.0] * 4 + [70.0] * 4)  # selling might earn less: 70 x 0.88 - wear < 60
+    assert plan_day(middle, BATTERY).discharge.sum() > 0
+    careful = plan_day(buy, BATTERY, sell_prices=sell)
+    assert careful.charge.sum() == 0 and careful.discharge.sum() == 0
+
+
+def test_buy_and_sell_prices_must_match_in_length() -> None:
+    with pytest.raises(ValueError, match="same half hours"):
+        plan_day(np.ones(4), BATTERY, sell_prices=np.ones(3))

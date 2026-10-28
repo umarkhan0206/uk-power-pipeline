@@ -1,4 +1,5 @@
 # UK Electricity Market Pipeline
+[![tests](https://github.com/umarkhan0206/uk-power-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/umarkhan0206/uk-power-pipeline/actions/workflows/tests.yml)
 
 A pipeline that collects Great Britain electricity market data, forecasts next day prices,
 and tests whether a grid battery could profit from those forecasts.

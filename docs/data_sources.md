@@ -121,6 +121,25 @@ are large. In this window, 83 half hours moved by more than £10 on 33 different
   before that cannot be measured
 - `best-view-prices` gives each run's label but not its publication time
 - The newest days are II or BM and can still change
+#### Revisions captured by the pipeline (look back of 1 November 2026)
+
+The second Sunday look back compared each day's newest file with the one from a week
+earlier. Every settlement stage advanced by about a week: 336 half hours each moved
+II to SF, SF to R1, R1 to R2, R2 to R3 (334) and R3 to RF; 288 moved BM to II.
+
+51 half hours changed price:
+- 33 ordinary corrections, almost all pennies. Largest: 6 October 2026 period 36,
+  II £358.00 to SF £367.68. Later stages (SF to R1, R3 to RF) moved at most £0.45.
+- 18 moved from a normal published price (BM) to exactly £0.00 in the first settlement run
+  (II), on 19 October (2), 20 October (11) and 21 October (5): the same clustered pattern as
+  the published feed's false zeros on 3 to 5 October, but in the settlement run.
+
+Not yet confirmed which is right for 19 to 21 October; the next look back will show whether
+SF restores the published prices. Working hypothesis: a zero marks missing input in
+whichever calculation produced it, so an early run alone is not trustworthy for zeros.
+Consequence for the forward test: flag II zeros that disagree with the published price and
+report results with and without them. Candidate Phase 5 check: a zero in one source but not
+the other.
 
 ### Generation by fuel type (FUELHH)
 

@@ -1,0 +1,5 @@
+# Store text files with Linux line endings in git, whatever the machine.
+* text=auto eol=lf
+*.png binary
+*.parquet binary
+*.zip binary

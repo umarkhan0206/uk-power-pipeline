@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chargecast · what a price forecast is worth to a battery</title>
+<meta name="description" content="Chargecast: a day ahead forecast of Great Britain's electricity imbalance price, and a year long backtest of what it is worth to a grid battery.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+:root {
+  --ink: #0f172a; --ink2: #475569; --ink3: #8a94a6;
+  --blue: #2a78d6; --violet: #6250d6; --orange: #eb6834; --aqua: #1baf7a; --yellow: #eda100;
+  --glass: rgba(255,255,255,.52); --glass-strong: rgba(255,255,255,.72);
+  --edge: rgba(255,255,255,.75); --line: rgba(15,23,42,.06);
+  --shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 10px 30px rgba(31,41,55,.08), 0 2px 6px rgba(31,41,55,.04);
+  --font: Outfit, Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--font); color: var(--ink); background: #eceff3; min-height: 100vh; overflow-x: hidden;
+  -webkit-font-smoothing: antialiased; }
+
+/* Soft, warm, drifting light behind the glass */
+.bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.bg span { position: absolute; border-radius: 50%; filter: blur(90px); }
+.b1 { width: 620px; height: 620px; background: #ffe07a; opacity: .75; top: 4%; left: 46%; animation: d1 24s ease-in-out infinite alternate; }
+.b2 { width: 560px; height: 560px; background: #ffffff; opacity: .95; top: -12%; left: 18%; animation: d2 28s ease-in-out infinite alternate; }
+.b3 { width: 520px; height: 520px; background: #bcd7f5; opacity: .7; top: 30%; left: -10%; animation: d3 30s ease-in-out infinite alternate; }
+.b4 { width: 480px; height: 480px; background: #ffd2bd; opacity: .6; bottom: -14%; right: -6%; animation: d4 26s ease-in-out infinite alternate; }
+.b5 { width: 380px; height: 380px; background: #c9f0de; opacity: .55; bottom: -10%; left: 30%; animation: d2 34s ease-in-out infinite alternate-reverse; }
+@keyframes d1 { to { transform: translate(-120px, 90px) scale(1.12); } }
+@keyframes d2 { to { transform: translate(140px, 60px) scale(.92); } }
+@keyframes d3 { to { transform: translate(120px, -80px) scale(1.15); } }
+@keyframes d4 { to { transform: translate(-140px, -60px) scale(1.1); } }
+
+.wrap { position: relative; z-index: 1; max-width: 1480px; margin: 0 auto; padding: 14px 24px 14px; display: grid; gap: 12px; }
+
+/* Frosted glass */
+.glass { background: var(--glass); border: 1px solid var(--edge); box-shadow: var(--shadow);
+  backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); }
+.card { border-radius: 22px; padding: 14px 16px; min-width: 0; position: relative; }
+.enter { opacity: 0; transform: translateY(16px) scale(.985); animation: rise .8s cubic-bezier(.2,.8,.2,1) forwards;
+  animation-delay: calc(var(--i, 0) * 110ms); }
+@keyframes rise { to { opacity: 1; transform: none; } }
+.card h2 { font-size: 16px; font-weight: 500; margin: 0; letter-spacing: -.01em; }
+.card .hint { font-size: 12.5px; color: var(--ink3); margin-top: 2px; font-weight: 300; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+
+/* Top bar */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  border-radius: 999px; padding: 8px 10px 8px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
+.logo { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(from 200deg, #ffb703, #fb8500, #2a78d6, #1baf7a, #ffb703); position: relative; }
+.logo::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff; }
+.logo svg { position: relative; z-index: 1; animation: zap 3.6s ease-in-out infinite; }
+@keyframes zap { 0%, 86%, 100% { transform: scale(1); } 90% { transform: scale(1.25) rotate(-8deg); } 95% { transform: scale(.94); } }
+.brand small { font-weight: 400; color: var(--ink3); font-size: 13px; }
+.nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill { font: inherit; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer;
+  background: var(--glass-strong); border: 1px solid var(--edge); border-radius: 999px; padding: 7px 14px;
+  display: inline-flex; align-items: center; gap: 7px; transition: transform .25s, box-shadow .25s, background .25s; }
+.pill:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(31,41,55,.12); background: #fff; }
+.pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+.pill.sun { background: #ffd84d; border-color: #ffd84d; color: #3b2f00; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aqua); animation: pulse 2.2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(27,175,122,.5); } 70% { box-shadow: 0 0 0 7px rgba(27,175,122,0); } 100% { box-shadow: 0 0 0 0 rgba(27,175,122,0); } }
+
+/* Hero */
+.hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; padding: 6px 4px 0; }
+.hero h1 { font-size: clamp(24px, 2.5vw, 34px); font-weight: 400; letter-spacing: -.025em; line-height: 1.1; margin: 0; max-width: 900px; }
+.hero h1 b { font-weight: 600; background: linear-gradient(90deg, var(--blue), var(--violet), var(--blue)); background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 6s linear infinite; }
+@keyframes shine { to { background-position: -200% 0; } }
+.hero p { color: var(--ink2); font-size: 14px; font-weight: 300; margin: 8px 0 0; max-width: 820px; }
+
+/* KPI tiles */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi { transition: transform .2s ease-out, box-shadow .25s; transform-style: preserve-3d; will-change: transform; }
+.kpi .l { font-size: 14px; font-weight: 400; color: var(--ink2); display: flex; justify-content: space-between; }
+.kpi .row { display: flex; align-items: center; gap: 10px; margin: 4px 0 0; }
+.kpi .v { font-size: 34px; font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.delta { font-size: 12px; font-weight: 600; color: #127a54; background: rgba(27,175,122,.14); border-radius: 7px;
+  padding: 3px 7px; display: inline-flex; gap: 4px; align-items: center; opacity: 0; transform: translateX(-8px);
+  animation: slide .5s ease-out forwards; }
+@keyframes slide { to { opacity: 1; transform: none; } }
+.kpi .n { font-size: 12.5px; color: var(--ink3); font-weight: 300; margin-top: 1px; }
+.kpi .spark { height: 42px; margin-top: 6px; }
+
+/* Layout rows */
+.row2 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.row3 { display: grid; grid-template-columns: 330px 1fr; gap: 12px; }
+#cum { height: 220px; }
+#lead { height: 218px; }
+#cal { height: 150px; }
+#day { height: 296px; }
+
+/* Leaderboard shimmer: one sweep of light across the card */
+.shimmer { overflow: hidden; }
+.shimmer::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.75), transparent); transform: skewX(-18deg);
+  animation: sweep 1.4s ease-in-out 2.6s 1 forwards; }
+@keyframes sweep { to { left: 130%; } }
+
+/* Day panel and battery */
+.daypane { display: flex; flex-direction: column; gap: 10px; }
+.dayhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.weekday { font-size: 12px; color: var(--ink3); font-weight: 500; text-transform: uppercase; letter-spacing: .1em; }
+.date { font-size: 22px; font-weight: 500; letter-spacing: -.02em; }
+.play { font: inherit; font-size: 13px; font-weight: 600; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  color: #3b2f00; background: #ffd84d; box-shadow: 0 6px 16px rgba(255,190,0,.35); display: inline-flex; gap: 6px; align-items: center;
+  transition: transform .2s, box-shadow .2s; white-space: nowrap; }
+.play:hover { transform: translateY(-1px) scale(1.03); }
+.replay { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; background: var(--glass-strong);
+  border: 1px solid var(--edge); border-radius: 16px; padding: 12px 14px; position: relative; }
+.batt { position: relative; width: 112px; height: 52px; }
+.batt .body { position: absolute; inset: 0 8px 0 0; border: 2.5px solid var(--ink); border-radius: 12px; padding: 4px; overflow: hidden; background: #fff; }
+.batt .cap { position: absolute; right: 0; top: 16px; width: 6px; height: 20px; border-radius: 0 4px 4px 0; background: var(--ink); }
+.batt .fill { height: 100%; width: 0%; border-radius: 7px; background: linear-gradient(90deg, #9cc3ef, #2a78d6);
+  transition: width .18s linear, background .3s; position: relative; overflow: hidden; }
+.batt .fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  transform: translateX(-100%); }
+.batt.charging .fill::after { animation: flow .9s linear infinite; }
+.batt.selling .fill { background: linear-gradient(90deg, #8fe0bf, #1baf7a); }
+.batt.selling .fill::after { animation: flow .9s linear infinite reverse; }
+@keyframes flow { to { transform: translateX(100%); } }
+.batt.charging .body { box-shadow: 0 0 0 4px rgba(42,120,214,.15), 0 0 22px rgba(42,120,214,.45); }
+.batt.selling .body { box-shadow: 0 0 0 4px rgba(27,175,122,.15), 0 0 22px rgba(27,175,122,.45); }
+.batt .pct { position: absolute; inset: 0 8px 0 0; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink); mix-blend-mode: multiply; }
+.cashbox .l { font-size: 12px; color: var(--ink3); font-weight: 400; display: flex; gap: 8px; align-items: center; }
+.cashbox .state { font-size: 11px; font-weight: 600; border-radius: 6px; padding: 2px 7px; background: #eef1f5; color: var(--ink2); }
+.cashbox .state.charging { background: rgba(42,120,214,.12); color: #1d5aa8; }
+.cashbox .state.selling { background: rgba(27,175,122,.14); color: #127a54; }
+.cash { font-size: 30px; font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.time { font-size: 12px; color: var(--ink3); font-variant-numeric: tabular-nums; }
+.pop { position: absolute; left: 60px; top: 6px; font-size: 13px; font-weight: 700; pointer-events: none;
+  animation: pop 1.3s ease-out forwards; white-space: nowrap; }
+.pop.up { color: #127a54; } .pop.down { color: #c2410c; }
+@keyframes pop { 0% { opacity: 0; transform: translateY(8px) scale(.8); } 15% { opacity: 1; transform: translateY(0) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-34px) scale(1); } }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: var(--glass-strong); border: 1px solid var(--edge); border-radius: 14px; padding: 8px 11px; }
+.stat .l { font-size: 12px; color: var(--ink2); display: flex; gap: 6px; align-items: center; }
+.stat .l i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.stat .v { font-size: 19px; font-weight: 500; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.verdict { font-size: 13px; color: var(--ink2); line-height: 1.45; min-height: 38px; font-weight: 300; }
+.verdict b { color: var(--ink); font-weight: 600; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets .pill { font-size: 12.5px; padding: 6px 12px; }
+.presets .pill.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+footer { font-size: 12px; color: var(--ink3); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 2px 6px; font-weight: 300; }
+footer a { color: var(--ink2); }
+
+@media (max-width: 1150px) { .kpis { grid-template-columns: repeat(2, 1fr); } .row2, .row3 { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .wrap { padding: 12px; } .kpis { grid-template-columns: 1fr; } .top { border-radius: 22px; }
+  .nav { display: none; } #cum { height: 260px; } #day { height: 360px; } #cal { height: 190px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .enter, .delta { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<div class="bg"><span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span><span class="b5"></span></div>
+<div class="wrap">
+  <div class="top glass enter" style="--i:0">
+    <div class="brand">
+      <div class="logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0f172a"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></div>
+      Chargecast <small>GB power · battery backtest</small>
+    </div>
+    <nav class="nav">
+      <a class="pill" href="#year">The year</a>
+      <a class="pill" href="#calendar">Every day</a>
+      <a class="pill" href="#replay">Day replay</a>
+      <a class="pill" id="docs" href="#">How it was tested</a>
+    </nav>
+    <div class="nav">
+      <span class="pill"><span class="dot"></span>Walk forward tested</span>
+      <a class="pill dark" id="repo" href="#"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.1 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z"/></svg>Code</a>
+    </div>
+  </div>
+
+  <section class="hero enter" style="--i:1">
+    <div>
+      <h1 id="headline"></h1>
+      <p id="sub"></p>
+    </div>
+    <a class="pill sun" href="#replay" id="heroplay">▶ Watch a day play out</a>
+  </section>
+
+  <section class="kpis">
+    <div class="card glass kpi enter" style="--i:2">
+      <div class="l">Battery profit</div>
+      <div class="row"><div class="v" id="k1">£0</div><span class="delta" style="animation-delay:1.5s" id="d1"></span></div>
+      <div class="n" id="n1"></div><div class="spark" id="sp1"></div>
+    </div>
+    <div class="card glass kpi enter" style="--i:3">
+      <div class="l">Versus the best simple forecast</div>
+      <div class="row"><div class="v" id="k2">+0%</div><span class="delta" style="animation-delay:1.65s" id="d2"></span></div>
+      <div class="n" id="n2"></div><div class="spark" id="sp2"></div>
+    </div>
+    <div class="card glass kpi enter" style="--i:4">
+      <div class="l">Versus a fixed daily rule</div>
+      <div class="row"><div class="v" id="k3">0.0×</div><span class="delta" style="animation-delay:1.8s" id="d3"></span></div>
+      <div class="n" id="n3"></div><div class="spark" id="sp3"></div>
+    </div>
+    <div class="card glass kpi enter" style="--i:5">
+      <div class="l">Lower forecast error</div>
+      <div class="row"><div class="v" id="k4">0.0%</div><span class="delta" style="animation-delay:1.95s" id="d4"></span></div>
+      <div class="n" id="n4"></div><div class="spark" id="sp4"></div>
+    </div>
+  </section>
+
+  <section class="row2" id="year">
+    <div class="card glass enter" style="--i:6">
+      <div class="head"><div><h2>Where the extra money comes from</h2><div class="hint" id="cumhint"></div></div></div>
+      <div id="cum"></div>
+    </div>
+    <div class="card glass shimmer enter" style="--i:7">
+      <div class="head"><div><h2>Share of the most money possible</h2><div class="hint" id="leadhint"></div></div></div>
+      <div id="lead"></div>
+    </div>
+  </section>
+
+  <section class="card glass enter" style="--i:8" id="calendar">
+    <div class="head"><div><h2>Every test day, coloured by what the forecast earned</h2><div class="hint">Click any day to replay it below.</div></div></div>
+    <div id="cal"></div>
+  </section>
+
+  <section class="row3" id="replay">
+    <div class="card glass daypane enter" style="--i:9">
+      <div class="dayhead">
+        <div><div class="weekday" id="weekday"></div><div class="date" id="date"></div></div>
+        <button class="play" id="play">▶ Play</button>
+      </div>
+      <div class="replay">
+        <div class="batt" id="batt"><div class="body"><div class="fill" id="fill"></div></div><div class="cap"></div><div class="pct" id="pct">0%</div></div>
+        <div class="cashbox">
+          <div class="l">Running profit <span class="state" id="state">Idle</span></div>
+          <div class="cash" id="cash">£0</div>
+          <div class="time" id="clock">00:00 UK time</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l"><i style="background:var(--blue)"></i>LightGBM plan</div><div class="v" id="s1">£0</div></div>
+        <div class="stat"><div class="l"><i style="background:var(--ink)"></i>Perfect foresight</div><div class="v" id="s2">£0</div></div>
+        <div class="stat"><div class="l"><i style="background:var(--orange)"></i>Typical price</div><div class="v" id="s3">£0</div></div>
+        <div class="stat"><div class="l"><i style="background:var(--aqua)"></i>Fixed rule</div><div class="v" id="s4">£0</div></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+      <div class="presets" id="presets"></div>
+    </div>
+    <div class="card glass enter" style="--i:10">
+      <div class="head"><div><h2>The forecast, its 10 to 90% range and the real price, then what the battery did</h2>
+        <div class="hint">Planned at 10:00 the day before and paid the settled price. Bars above zero sell, below zero buy.</div></div></div>
+      <div id="day"></div>
+    </div>
+  </section>
+
+  <footer>
+    <span id="spec"></span>
+    <span>Data: Elexon, Open-Meteo (ECMWF), NESO Carbon Intensity · <a id="docs2" href="#">Method and limits</a></span>
+  </footer>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+const REPO = "https://github.com/umarkhan0206/uk-power-pipeline";
+const C = { blue: "#2a78d6", orange: "#eb6834", aqua: "#1baf7a", yellow: "#eda100", ink: "#0f172a",
+            ink2: "#475569", ink3: "#8a94a6", grid: "rgba(15,23,42,.07)", perfect: "#c3ccd8" };
+const NAMES = { lgbm: "LightGBM forecast", typical_28d: "Typical price forecast", fixed_rule: "Fixed daily rule",
+                same_hh_7d: "Same half hour, 7 days ago", perfect_foresight: "Perfect foresight" };
+const COLOUR = { lgbm: C.blue, typical_28d: C.orange, fixed_rule: C.aqua, same_hh_7d: C.yellow, perfect_foresight: C.ink };
+const B = D.battery;
+const BATTERY = { eta: Math.sqrt(B.round_trip_efficiency), capacity: B.capacity_mwh, wear: B.wear_cost_per_mwh, step: B.power_mw * 0.5 };
+const SIZE = `${+B.power_mw.toFixed(2)} MW / ${+B.capacity_mwh.toFixed(2)} MWh`;
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const NARROW = innerWidth < 700;
+const FONT = "Outfit, Inter, system-ui, sans-serif";
+const $ = id => document.getElementById(id);
+const gbp = (v, d = 0) => (v < 0 ? "−" : "") + "£" + Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+const longDate = s => new Date(s + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+const weekday = s => new Date(s + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long" });
+const tip = { backgroundColor: "rgba(255,255,255,.96)", borderColor: "rgba(15,23,42,.08)", textStyle: { color: C.ink, fontFamily: FONT, fontSize: 12.5 },
+              extraCssText: "border-radius:12px;box-shadow:0 10px 30px rgba(31,41,55,.12);backdrop-filter:blur(8px);" };
+
+function countUp(el, to, fmt, delay = 0, dur = 1500) {
+  if (REDUCED) { el.textContent = fmt(to); el._v = to; return; }
+  const from = el._v ?? 0, start = performance.now() + delay;
+  el._v = to;
+  const step = t => {
+    const p = Math.min(Math.max((t - start) / dur, 0), 1), e = 1 - Math.pow(1 - p, 4);
+    el.textContent = fmt(from + (to - from) * e);
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+const charts = [];
+function make(id) { const c = echarts.init($(id), null, { renderer: "canvas" }); charts.push(c); return c; }
+addEventListener("resize", () => charts.forEach(c => c.resize()));
+const base = { animation: !REDUCED, textStyle: { fontFamily: FONT } };
+
+/* Cards stop their entrance animation once done, so hover tilt can take over */
+document.querySelectorAll(".enter").forEach(el => el.addEventListener("animationend", e => {
+  if (e.target === el && e.animationName === "rise") { el.style.animation = "none"; el.style.opacity = 1; el.classList.remove("enter"); }
+}));
+if (!REDUCED && matchMedia("(hover: hover)").matches) {
+  document.querySelectorAll(".kpi").forEach(el => {
+    el.addEventListener("mousemove", e => {
+      if (el.classList.contains("enter")) return;
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      el.style.transform = `perspective(800px) rotateX(${(-y * 6).toFixed(2)}deg) rotateY(${(x * 8).toFixed(2)}deg) translateY(-2px)`;
+      el.style.boxShadow = "0 1px 0 rgba(255,255,255,.9) inset, 0 18px 40px rgba(31,41,55,.14)";
+    });
+    el.addEventListener("mouseleave", () => { el.style.transform = ""; el.style.boxShadow = ""; });
+  });
+}
+
+const T = D.totals, dates = D.daily.dates, n = dates.length;
+const running = s => { let t = 0; return D.daily[s].map(v => +(t += v ?? 0).toFixed(2)); };
+
+/* Text */
+$("repo").href = REPO;
+$("docs").href = $("docs2").href = REPO + "/blob/main/docs/backtest.md";
+const uplift = 100 * (T.lgbm / T.typical_28d - 1), times = T.lgbm / T.fixed_rule, err = 100 * (1 - D.mae.lgbm / D.mae.typical);
+$("headline").innerHTML = `A ${Math.floor(err)}% better forecast made a battery <b>${uplift.toFixed(0)}% more money</b>.`;
+$("sub").textContent = `GB half hourly imbalance price, forecast at 10:00 the day before, ${longDate(D.start)} to ${longDate(D.end)}: ${n} days the model never trained on. A simulated ${SIZE} battery plans each day from the forecast and is paid the settled price.`;
+$("spec").textContent = `Battery: ${SIZE}, ${Math.round(100 * B.round_trip_efficiency)}% round trip, at most ${+B.max_cycles_per_day.toFixed(2)} cycles a day, ${gbp(B.wear_cost_per_mwh)} wear per MWh sold. Every input was available by 10:00 the day before.`;
+$("cumhint").textContent = "Running total profit for each way of planning the battery, day by day across the test year.";
+$("leadhint").textContent = `Perfect foresight, impossible in practice, = 100% (${gbp(T.perfect_foresight)})`;
+
+/* KPI tiles: numbers count up, deltas slide in, thin bars grow one by one */
+countUp($("k1"), T.lgbm, v => gbp(v), 300);
+countUp($("k2"), uplift, v => "+" + v.toFixed(0) + "%", 450);
+countUp($("k3"), times, v => v.toFixed(1) + "×", 600);
+countUp($("k4"), err, v => v.toFixed(1) + "%", 750);
+$("d1").textContent = `▲ ${(100 * T.lgbm / T.perfect_foresight).toFixed(0)}% of max`;
+$("d2").textContent = `▲ ${gbp(T.lgbm - T.typical_28d)}`;
+$("d3").textContent = `▲ ${gbp(T.lgbm - T.fixed_rule)}`;
+$("d4").textContent = `▼ ${gbp(D.mae.typical - D.mae.lgbm, 2)} a miss`;
+$("n1").textContent = `${n} days with the LightGBM forecast · last 60 days below`;
+$("n2").textContent = `${gbp(T.lgbm)} vs ${gbp(T.typical_28d)} · daily gap, last 60 days`;
+$("n3").textContent = `${gbp(T.lgbm)} vs ${gbp(T.fixed_rule)} · daily gap, last 60 days`;
+$("n4").textContent = `average miss ${gbp(D.mae.lgbm, 2)} vs ${gbp(D.mae.typical, 2)} · by month`;
+
+function thinBars(id, values, labels, delay) {
+  make(id).setOption({ ...base, animationDuration: 500, animationDelay: i => delay + i * 14,
+    grid: { left: 0, right: 0, top: 4, bottom: 0 }, tooltip: { ...tip, formatter: p => `${labels[p.dataIndex]}<br><b>${p.value >= 0 ? "+" : ""}${p.seriesName === "%" ? p.value.toFixed(1) + "%" : gbp(p.value)}</b>` },
+    xAxis: { type: "category", show: false, data: labels }, yAxis: { type: "value", show: false },
+    series: [{ name: id === "sp4" ? "%" : "£", type: "bar", barWidth: id === "sp4" ? 6 : 2.5, data: values.map(v => ({ value: v,
+      itemStyle: { color: v >= 0 ? (id === "sp1" ? C.blue : C.aqua) : C.orange, borderRadius: 2 } })) }] });
+}
+const last = s => D.daily[s].slice(-60);
+const lastDates = dates.slice(-60).map(longDate);
+thinBars("sp1", last("lgbm"), lastDates, 900);
+thinBars("sp2", last("lgbm").map((v, i) => +(v - last("typical_28d")[i]).toFixed(2)), lastDates, 1000);
+thinBars("sp3", last("lgbm").map((v, i) => +(v - last("fixed_rule")[i]).toFixed(2)), lastDates, 1100);
+const M = D.mae_monthly;
+thinBars("sp4", M.lgbm.map((v, i) => +(100 * (1 - v / M.typical[i])).toFixed(1)),
+         M.months.map(m => new Date(m + "-15").toLocaleDateString("en-GB", { month: "short", year: "numeric" })), 1200);
+
+/* The year: lines draw themselves, totals ride the tips, then pulse */
+const ORDER = ["lgbm", "typical_28d", "fixed_rule", "same_hh_7d"];
+const runs = Object.fromEntries(ORDER.map(s => [s, running(s)]));
+make("cum").setOption({
+  ...base, animationDuration: 2800, animationEasing: "cubicOut",
+  grid: { left: 50, right: 96, top: 34, bottom: 22 },
+  legend: { type: NARROW ? "scroll" : "plain", data: ORDER.map(s => NAMES[s]), top: 0, left: 0, right: 0, icon: "circle", itemWidth: 9, itemHeight: 9, itemGap: 16, textStyle: { color: C.ink2, fontSize: 12.5 } },
+  tooltip: { ...tip, trigger: "axis", valueFormatter: v => gbp(v) },
+  xAxis: { type: "time", axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
+           axisLabel: { color: C.ink3, formatter: "{MMM} {yy}", hideOverlap: true } },
+  yAxis: { type: "value", axisLabel: { color: C.ink3, formatter: v => (v < 0 ? "−" : "") + "£" + Math.abs(v / 1000) + "k" },
+           splitLine: { lineStyle: { color: C.grid } } },
+  series: [
+    ...ORDER.map(s => ({
+      name: NAMES[s], type: "line", showSymbol: false, smooth: 0.2, emphasis: { focus: "series" },
+      lineStyle: { width: s === "lgbm" ? 3 : 2, color: COLOUR[s], shadowColor: s === "lgbm" ? "rgba(42,120,214,.35)" : "transparent", shadowBlur: 10 },
+      itemStyle: { color: COLOUR[s] },
+      areaStyle: s === "lgbm" ? { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: "rgba(42,120,214,.20)" }, { offset: 1, color: "rgba(42,120,214,0)" }]) } : undefined,
+      endLabel: { show: true, valueAnimation: true, color: C.ink, fontWeight: 600, fontSize: 12.5, formatter: p => gbp(p.value[1]) },
+      labelLayout: { moveOverlap: "shiftY" },
+      data: runs[s].map((v, j) => [dates[j], v]),
+    })),
+    ...ORDER.map(s => ({
+      type: "effectScatter", data: [[dates[n - 1], runs[s][n - 1]]], symbolSize: 7, silent: true, tooltip: { show: false },
+      itemStyle: { color: COLOUR[s] }, rippleEffect: { scale: 3.2, brushType: "stroke", period: 2.4 },
+      animationDelay: 2700, animationDuration: 400, z: 4,
+    })),
+  ],
+});
+
+/* Leaderboard: bars grow one after another, 100% marks perfect foresight */
+const LEAD = ["same_hh_7d", "fixed_rule", "typical_28d", "lgbm"];
+make("lead").setOption({
+  ...base, animationDuration: 1500, animationEasing: "cubicOut", animationDelay: i => 900 + (LEAD.length - 1 - i) * 230,
+  grid: { left: 150, right: 56, top: 8, bottom: 6 },
+  tooltip: { ...tip, formatter: p => `${p.name}<br><b>${p.value.toFixed(1)}%</b> of perfect foresight · ${gbp(T[LEAD[p.dataIndex]])}` },
+  xAxis: { type: "value", max: 100, show: false },
+  yAxis: { type: "category", data: LEAD.map(s => NAMES[s]), axisLine: { show: false }, axisTick: { show: false },
+           axisLabel: { color: C.ink, fontSize: 12.5, width: 140, overflow: "break", lineHeight: 15, align: "right" } },
+  series: [{ type: "bar", barWidth: 18, showBackground: true, backgroundStyle: { color: "rgba(255,255,255,.7)", borderRadius: 9 },
+    data: LEAD.map(s => ({ value: +(100 * T[s] / T.perfect_foresight).toFixed(1), itemStyle: { color: COLOUR[s], borderRadius: 9 } })),
+    label: { show: true, position: "right", valueAnimation: true, color: C.ink, fontWeight: 600, fontSize: 13, formatter: p => p.value.toFixed(1) + "%" },
+    markLine: { symbol: "none", silent: true, lineStyle: { color: C.ink3, type: [4, 4] }, label: { show: false }, data: [{ xAxis: 100 }] } }],
+});
+
+/* Calendar: every day, arriving as a wave, click to open */
+const cal = make("cal");
+const PIECES = [
+  { lt: -50, color: "#e2622b", label: "loss over £50" }, { gte: -50, lt: 0, color: "#f9c6ad", label: "small loss" },
+  { gte: 0, lt: 50, color: "#e3ecf8", label: "£0–50" }, { gte: 50, lt: 150, color: "#a3c4ee", label: "£50–150" },
+  { gte: 150, lt: 300, color: "#4f8fdf", label: "£150–300" }, { gte: 300, color: "#1d57a3", label: "over £300" },
+];
+const firstDow = (new Date(D.start + "T12:00:00Z").getUTCDay() + 6) % 7;
+const waveDelay = i => 1200 + Math.floor((i + firstDow) / 7) * 22 + ((i + firstDow) % 7) * 14;
+cal.setOption({
+  ...base,
+  tooltip: { ...tip, formatter: p => p.seriesType === "heatmap" ? `<b>${weekday(p.value[0])} ${longDate(p.value[0])}</b><br>LightGBM plan earned ${gbp(p.value[1])}` : "" },
+  visualMap: { type: "piecewise", seriesIndex: 0, orient: "horizontal", right: NARROW ? undefined : 0, left: NARROW ? 0 : undefined, top: 0, pieces: PIECES,
+               itemWidth: 11, itemHeight: 11, itemGap: 10, textStyle: { color: C.ink2, fontSize: 11.5 }, itemSymbol: "roundRect" },
+  calendar: { range: [D.start, D.end], left: 26, right: 4, top: NARROW ? 66 : 46, bottom: 4, cellSize: ["auto", "auto"],
+              splitLine: { show: false }, itemStyle: { color: "rgba(255,255,255,.5)", borderWidth: 2.5, borderColor: "rgba(255,255,255,0)" },
+              yearLabel: { show: false }, dayLabel: { firstDay: 1, nameMap: ["S", "M", "T", "W", "T", "F", "S"], color: C.ink3, fontSize: 10 },
+              monthLabel: { color: C.ink2, fontSize: 11.5 } },
+  series: [
+    { type: "heatmap", coordinateSystem: "calendar", data: dates.map((d, i) => [d, D.daily.lgbm[i]]),
+      itemStyle: { borderRadius: 4, borderColor: "rgba(255,255,255,.9)", borderWidth: 2 },
+      emphasis: { itemStyle: { borderColor: C.ink, borderWidth: 2, shadowBlur: 12, shadowColor: "rgba(15,23,42,.35)" } },
+      animationDuration: 500, animationDelay: waveDelay },
+    { type: "effectScatter", coordinateSystem: "calendar", data: [], symbolSize: 10, z: 5, silent: true, tooltip: { show: false },
+      rippleEffect: { brushType: "stroke", scale: 3.8, period: 2.2, color: C.ink },
+      itemStyle: { color: "#ffd84d", borderColor: C.ink, borderWidth: 2, shadowBlur: 14, shadowColor: "rgba(255,190,0,.9)" } },
+  ],
+});
+
+/* One day: band, forecast, actual (with a spike callout), then the battery's plan */
+const dayChart = make("day");
+let current = null;
+function dayOption(key) {
+  const d = D.days[key];
+  const band = d.hi.map((h, i) => (h == null || d.lo[i] == null) ? null : +(h - d.lo[i]).toFixed(2));
+  const actual = d.a.filter(v => v != null), sorted = [...actual].sort((a, b) => a - b);
+  const peak = Math.max(...actual), med = sorted[Math.floor(sorted.length / 2)] ?? 0, peakAt = d.a.indexOf(peak);
+  const spike = peak > Math.max(250, 2 * med);
+  const axis = { lineStyle: { color: C.grid } };
+  return {
+    ...base, animationDuration: 1000, animationDurationUpdate: 800, animationEasingUpdate: "cubicInOut",
+    axisPointer: { link: [{ xAxisIndex: "all" }], lineStyle: { color: C.ink3 } },
+    legend: { type: NARROW ? "scroll" : "plain", top: 0, left: 0, right: 0, icon: "circle", itemWidth: 9, itemHeight: 9, itemGap: 14, textStyle: { color: C.ink2, fontSize: 12.5 },
+              data: ["Forecast", "10 to 90% range", "Actual price", "Battery, following the forecast", "Battery, perfect foresight"] },
+    tooltip: { ...tip, trigger: "axis",
+      formatter: ps => {
+        const i = ps[0].dataIndex, x = D.days[current];
+        const row = (c, nm, v) => `<div style="display:flex;justify-content:space-between;gap:18px"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:6px"></span>${nm}</span><b>${v}</b></div>`;
+        const mwh = v => v == null ? "–" : (v > 0.001 ? "sell " : v < -0.001 ? "buy " : "idle ") + (Math.abs(v) > 0.001 ? Math.abs(v).toFixed(2) + " MWh" : "");
+        return `<b>${x.t[i]} UK time</b>` + row(C.blue, "Forecast", gbp(x.f[i], 2)) + row("rgba(42,120,214,.35)", "Range", `${gbp(x.lo[i])} to ${gbp(x.hi[i])}`) +
+          row(C.ink, "Actual", gbp(x.a[i], 2)) + row(C.blue, "Battery (forecast)", mwh(x.pl[i])) + row(C.perfect, "Battery (perfect)", mwh(x.pp[i]));
+      } },
+    grid: [{ left: 50, right: 16, top: 48, height: "48%" }, { left: 50, right: 16, top: "72%", bottom: 22 }],
+    xAxis: [
+      { type: "category", data: d.t, gridIndex: 0, boundaryGap: false, axisLabel: { show: false }, axisTick: { show: false }, axisLine: axis },
+      { type: "category", data: d.t, gridIndex: 1, axisLabel: { color: C.ink3, interval: 7 }, axisTick: { show: false }, axisLine: axis },
+    ],
+    yAxis: [
+      { type: "value", gridIndex: 0, name: "£/MWh", nameGap: 8, nameTextStyle: { color: C.ink3, align: "left", fontSize: 11 }, scale: true,
+        axisLabel: { color: C.ink3 }, splitLine: { lineStyle: { color: C.grid } } },
+      { type: "value", gridIndex: 1, name: "MWh", nameGap: 6, nameTextStyle: { color: C.ink3, align: "left", fontSize: 11 },
+        axisLabel: { color: C.ink3 }, splitLine: { lineStyle: { color: C.grid } }, min: -BATTERY.step, max: BATTERY.step, interval: BATTERY.step },
+    ],
+    series: [
+      { name: "band base", type: "line", data: d.lo, stack: "band", stackStrategy: "all", symbol: "none", lineStyle: { opacity: 0 }, silent: true },
+      { name: "10 to 90% range", type: "line", data: band, stack: "band", stackStrategy: "all", symbol: "none", lineStyle: { opacity: 0 },
+        areaStyle: { color: "rgba(42,120,214,.16)" }, itemStyle: { color: "rgba(42,120,214,.35)" }, silent: true },
+      { name: "Forecast", type: "line", data: d.f, symbol: "none", smooth: 0.25, lineStyle: { width: 2.5, color: C.blue }, itemStyle: { color: C.blue },
+        markLine: { data: [] } },
+      { name: "Actual price", type: "line", data: d.a, symbol: "none", smooth: 0.25, lineStyle: { width: 2.5, color: C.ink, type: [6, 4] }, itemStyle: { color: C.ink },
+        markPoint: { data: spike ? [{ coord: [peakAt, peak], value: peak }] : [], symbol: "roundRect", symbolSize: [86, 26], symbolOffset: [0, -20],
+          itemStyle: { color: "#ffd84d", shadowBlur: 10, shadowColor: "rgba(255,190,0,.5)" }, animationDuration: 600, animationDelay: 900,
+          label: { color: "#3b2f00", fontWeight: 700, fontSize: 12, formatter: p => `${gbp(p.value)} spike` } } },
+      { name: "Battery, following the forecast", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: d.pl, barGap: "15%", barCategoryGap: "25%",
+        itemStyle: { color: C.blue, borderRadius: 2 }, markLine: { data: [] } },
+      { name: "Battery, perfect foresight", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: d.pp, itemStyle: { color: C.perfect, borderRadius: 2 } },
+    ],
+  };
+}
+
+/* Replay: the battery fills and drains with the real plan, paid the real price */
+function simulate(key) {
+  const d = D.days[key];
+  let stored = 0, cash = 0;
+  return d.pl.map((p, i) => {
+    p = p ?? 0;
+    const sell = Math.max(p, 0), buy = Math.max(-p, 0);
+    stored = Math.min(Math.max(stored + buy * BATTERY.eta - sell / BATTERY.eta, 0), BATTERY.capacity);
+    const step = (d.a[i] ?? 0) * p - BATTERY.wear * sell;
+    cash += step;
+    return { stored, cash, step, state: sell > 0.001 ? "selling" : buy > 0.001 ? "charging" : "idle" };
+  });
+}
+const cursorLine = i => ({ symbol: "none", silent: true, animation: false, label: { show: false },
+  lineStyle: { color: "#f59e0b", width: 2, type: "solid", shadowBlur: 8, shadowColor: "rgba(245,158,11,.6)" }, data: i == null ? [] : [{ xAxis: i }] });
+function setCursor(i) { dayChart.setOption({ series: [{}, {}, { markLine: cursorLine(i) }, {}, { markLine: cursorLine(i) }, {}] }); }
+const LABEL = { selling: "Selling", charging: "Charging", idle: "Idle" };
+function showFrame(f, t) {
+  $("fill").style.width = (100 * f.stored / BATTERY.capacity).toFixed(1) + "%";
+  $("pct").textContent = Math.round(100 * f.stored / BATTERY.capacity) + "%";
+  $("batt").className = "batt " + f.state;
+  $("state").className = "state " + f.state;
+  $("state").textContent = LABEL[f.state];
+  $("cash").textContent = gbp(f.cash);
+  $("clock").textContent = t + " UK time";
+}
+function popChip(step) {
+  if (REDUCED || Math.abs(step) < 1) return;
+  const el = document.createElement("div");
+  el.className = "pop " + (step > 0 ? "up" : "down");
+  el.textContent = (step > 0 ? "+" : "−") + gbp(Math.abs(step)).slice(0);
+  el.style.left = (40 + Math.random() * 40) + "px";
+  document.querySelector(".replay").appendChild(el);
+  setTimeout(() => el.remove(), 1400);
+}
+let frames = [], pos = 0, timer = null, playing = false;
+function resetReplay() {
+  clearTimeout(timer); playing = false; pos = 0;
+  frames = simulate(current);
+  showFrame({ stored: 0, cash: 0, state: "idle" }, D.days[current].t[0]);
+  setCursor(null); $("play").textContent = "▶ Play"; $("verdict").innerHTML = "";
+}
+function tick() {
+  const d = D.days[current];
+  showFrame(frames[pos], d.t[pos]); setCursor(pos); popChip(frames[pos].step);
+  pos += 1;
+  if (pos < frames.length) { timer = setTimeout(tick, 8000 / frames.length); return; }
+  playing = false; $("play").textContent = "↻ Replay"; showVerdict();
+  setTimeout(() => { if (!playing) setCursor(null); }, 1600);
+}
+function play() {
+  if (playing) { clearTimeout(timer); playing = false; $("play").textContent = "▶ Resume"; return; }
+  if (pos >= frames.length) resetReplay();
+  playing = true; $("play").textContent = "❚❚ Pause"; $("verdict").innerHTML = "";
+  tick();
+}
+$("play").addEventListener("click", play);
+function showVerdict() {
+  const i = idx[current], v = s => D.daily[s][i];
+  const lgbm = v("lgbm"), perfect = v("perfect_foresight");
+  $("verdict").innerHTML = perfect <= 0 ? "No profit was possible this day." :
+    lgbm < 0 ? `Following the forecast <b>lost ${gbp(-lgbm)}</b> on a day when perfect foresight made ${gbp(perfect)}, because the real prices did not follow the forecast.` :
+    `Following the forecast captured <b>${(100 * lgbm / perfect).toFixed(0)}%</b> of what perfect foresight made.`;
+}
+
+const idx = Object.fromEntries(dates.map((d, i) => [d, i]));
+const best = dates[D.daily.perfect_foresight.indexOf(Math.max(...D.daily.perfect_foresight))];
+const worst = dates[D.daily.lgbm.indexOf(Math.min(...D.daily.lgbm))];
+const median = [...D.daily.lgbm].sort((a, b) => a - b)[Math.floor(n / 2)];
+const ordinary = dates[D.daily.lgbm.map(v => Math.abs(v - median)).reduce((bi, v, i, a) => v < a[bi] ? i : bi, 0)];
+$("presets").innerHTML = [["Best day", best], ["Worst day", worst], ["Ordinary day", ordinary]]
+  .map(([nm, k]) => `<button class="pill" data-k="${k}">${nm}</button>`).join("");
+$("presets").addEventListener("click", e => { const k = e.target.dataset?.k; if (k) selectDay(k, true); });
+cal.on("click", p => { if (p.seriesType === "heatmap") selectDay(p.value[0], true); });
+$("heroplay").addEventListener("click", () => setTimeout(() => { if (!playing) { if (pos >= frames.length) resetReplay(); play(); } }, 500));
+
+function selectDay(key, autoplay) {
+  if (!D.days[key]) return;
+  current = key;
+  const i = idx[key], v = s => D.daily[s][i];
+  $("weekday").textContent = weekday(key);
+  $("date").textContent = longDate(key);
+  countUp($("s1"), v("lgbm"), x => gbp(x), 0, 700);
+  countUp($("s2"), v("perfect_foresight"), x => gbp(x), 0, 700);
+  countUp($("s3"), v("typical_28d"), x => gbp(x), 0, 700);
+  countUp($("s4"), v("fixed_rule"), x => gbp(x), 0, 700);
+  document.querySelectorAll(".presets .pill").forEach(b => b.classList.toggle("on", b.dataset.k === key));
+  dayChart.setOption(dayOption(key));
+  cal.setOption({ series: [{}, { data: [[key, 1]] }] });
+  resetReplay();
+  if (autoplay && !REDUCED) setTimeout(() => { if (current === key && !playing) play(); }, 900);
+}
+selectDay(best, false);
+if (!REDUCED) setTimeout(() => { if (!playing && pos === 0) play(); }, 3600);
+</script>
+</body>
+</html>

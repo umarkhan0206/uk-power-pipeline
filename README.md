@@ -1,5 +1,10 @@
-# UK Electricity Market Pipeline
+# Chargecast
+UK electricity price forecasting and battery trading backtest
+
 [![tests](https://github.com/umarkhan0206/uk-power-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/umarkhan0206/uk-power-pipeline/actions/workflows/tests.yml)
+
+**Live dashboard:** [umarkhan0206.github.io/uk-power-pipeline/dashboard](https://umarkhan0206.github.io/uk-power-pipeline/dashboard/)
+(every test day, and a replay of what the battery did on any of them)
 
 A data pipeline that collects two years of Great Britain electricity market data, forecasts
 the next day's half hourly imbalance price at 10:00 the day before, and tests what those
@@ -85,7 +90,7 @@ flowchart LR
 * **Pre-registration.** A risk control for the battery (plan with cautious 25% and 75% price
   levels) was committed to git before it was run. It cut losing days from 108 to 28 but
   earned 43% less, so it was reported and not adopted.
-* **Tests.** 286 tests run on every push, including the battery's physics (never above full,
+* **Tests.** 293 tests run on every push, including the battery's physics (never above full,
   never below empty, energy in minus losses equals energy out).
 
 ## Data findings along the way
@@ -128,6 +133,8 @@ python -m ukpower.ingestion.cli backfill --start 2024-10-01
 python -m ukpower.forecast.evaluate                   # needs data/gold/price_features.parquet
 python -m ukpower.backtest.run
 python scripts/make_charts.py
+python scripts/publish_results.py                     # writes results/ for the dashboard
+python scripts/build_dashboard.py                     # writes docs/dashboard/index.html
 ```
 
 Bronze, Silver and Gold are built in Databricks from the notebooks in `databricks/`, and Gold
@@ -138,9 +145,12 @@ is exported to `data/gold/price_features.parquet`. Settings live in
 
 ```
 config/          settings
+dashboard/       dashboard page template
 databricks/      Bronze, Silver and Gold notebooks
 docs/            data sources, lakehouse, experiments, backtest
-scripts/         charts for this README
+docs/dashboard/  the built dashboard, served by GitHub Pages
+results/         published forecasts and daily battery profits
+scripts/         charts, published results and the dashboard build
 src/ukpower/     ingestion, forecast and backtest packages
 tests/           unit tests and real API fixtures
 ```
@@ -155,5 +165,5 @@ tests/           unit tests and real API fixtures
 
 ## Next
 
-Automated daily runs, data quality checks and monitoring, a dashboard, and a forward test on
-days collected after the model was frozen.
+Automated daily runs, data quality checks and monitoring, and a forward test on days
+collected after the model was frozen.
